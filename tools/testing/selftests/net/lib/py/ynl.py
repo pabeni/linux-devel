@@ -47,3 +47,8 @@ class NetdevFamily(YnlFamily):
     def __init__(self):
         super().__init__((SPEC_PATH / Path('netdev.yaml')).as_posix(),
                          schema='')
+
+class ShaperFamily(YnlFamily):
+    def __init__(self):
+        super().__init__((SPEC_PATH / Path('shaper.yaml')).as_posix(),
+                         schema='')
