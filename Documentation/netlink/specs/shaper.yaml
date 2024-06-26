@@ -1,0 +1,260 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+
+name: net-shaper
+
+doc: Network HW Rate Limiting offload
+
+definitions:
+  -
+    type: enum
+    name: scope
+    doc: the different scopes where a shaper can be attached
+    render-max: true
+    entries:
+      - name: unspec
+        doc: The scope is not specified
+      -
+        name: port
+        doc: The root shaper for the whole H/W.
+      -
+        name: netdev
+        doc: The main shaper for the given network device.
+      -
+        name: queue
+        doc: The shaper is attached to the given device queue.
+      -
+        name: detached
+        doc: |
+             The shaper can be attached to port, netdev or other
+             detached shapers, allowing nesting and grouping of
+             netdev or queues.
+  -
+    type: enum
+    name: metric
+    doc: different metric each shaper can support
+    entries:
+      -
+        name: bps
+        doc: Shaper operates on a bits per second basis
+      -
+        name: pps
+        doc: Shaper operates on a packets per second basis
+
+attribute-sets:
+  -
+    name: net-shaper
+    attributes:
+      -
+        name: ifindex
+        type: u32
+        doc: Interface index owing the specified shaper[s]
+      -
+        name: handle
+        type: nest
+        nested-attributes: handle
+        doc: Unique indentified for the given shaper
+      -
+        name: metric
+        type: u32
+        enum: metric
+        doc: Metric used by the given shaper for bw-min, bw-max and burst
+      -
+        name: bw-min
+        type: uint
+        doc: Minimum guaranteed B/W for the given shaper
+      -
+        name: bw-max
+        type: uint
+        doc: Shaping B/W for the given shaper or 0 when unlimited
+      -
+        name: burst
+        type: uint
+        doc: Maximum burst-size for bw-min and bw-max
+      -
+        name: priority
+        type: u32
+        doc: Scheduling priority for the given shaper
+      -
+        name: weight
+        type: u32
+        doc: |
+          Weighted round robin weight for given shaper.
+          The scheduling is applied to all the sibling
+          shapers with the same priority
+      -
+        name: scope
+        type: u32
+        enum: scope
+        doc: The given handle scope
+      -
+        name: id
+        type: u32
+        doc: |
+          The given handle id. The id semantic depends on the actual
+          scope, e.g. for 'queue' scope it's the queue id, for
+          'detached' scope it's the shaper group identifier.
+      -
+        name: parent
+        type: nest
+        nested-attributes: handle
+        doc: |
+          Indentifier for the parent of the affected shaper,
+          Always implied unless for the output shaper in the
+          'group' operation.
+      -
+        name: inputs
+        type: nest
+        multi-attr: true
+        nested-attributes: ns-info
+        doc: |
+           Describes a set of inputs shapers for a @group operation
+      -
+        name: output
+        type: nest
+        nested-attributes: ns-output-info
+        doc: |
+           Describes the output shaper for a @group operation
+
+      -
+        name: shaper
+        type: nest
+        nested-attributes: ns-info
+        doc: |
+           Describes a single shaper for a @set operation
+  -
+    name: handle
+    subset-of: net-shaper
+    attributes:
+      -
+        name: scope
+      -
+        name: id
+  -
+    name: ns-info
+    subset-of: net-shaper
+    attributes:
+      -
+        name: handle
+      -
+        name: metric
+      -
+        name: bw-min
+      -
+        name: bw-max
+      -
+        name: burst
+      -
+        name: priority
+      -
+        name: weight
+  -
+    name: ns-output-info
+    subset-of: net-shaper
+    attributes:
+      -
+        name: parent
+      -
+        name: handle
+      -
+        name: metric
+      -
+        name: bw-min
+      -
+        name: bw-max
+      -
+        name: burst
+      -
+        name: priority
+      -
+        name: weight
+
+operations:
+  list:
+    -
+      name: get
+      doc: |
+        Get / Dump information about a/all the shaper for a given device
+      attribute-set: net-shaper
+
+      do:
+        request:
+          attributes:
+            - ifindex
+            - handle
+        reply:
+          attributes: &ns-attrs
+            - parent
+            - handle
+            - metric
+            - bw-min
+            - bw-max
+            - burst
+            - priority
+            - weight
+
+      dump:
+        request:
+          attributes:
+            - ifindex
+        reply:
+          attributes: *ns-attrs
+    -
+      name: set
+      doc: |
+        Create or configures the specified shaper.
+        On failures the extack is set accordingly.
+        Can't create @detached scope shaper, use
+        the @group operation instead.
+      attribute-set: net-shaper
+      flags: [ admin-perm ]
+
+      do:
+        request:
+          attributes:
+            - ifindex
+            - shaper
+
+    -
+      name: delete
+      doc: |
+        Clear (remove) the specified shaper. If after the removal
+        the parent shaper has no more children and the parent
+        shaper scope is @detached, even the parent is deleted,
+        recursively.
+        On failures the extack is set accordingly.
+      attribute-set: net-shaper
+      flags: [ admin-perm ]
+
+      do:
+        request:
+          attributes:
+            - ifindex
+            - handle
+
+    -
+      name: group
+      doc: |
+        Group the specified input shapers under the specified
+        output shaper, eventually creating the latter, if needed.
+        Input shapers scope must be either @queue or @detached.
+        Output shaper scope must be either @detached or @netdev.
+        When using an output @detached scope shaper, if the
+        @handle @id is not specified, a new shaper of such scope
+        is created and, otherwise the specified output shaper
+        must be already existing.
+        The operation is atomic, on failures the extack is set
+        accordingly and no change is applied to the device
+        shaping configuration, otherwise the output shaper
+        handle is provided as reply.
+      attribute-set: net-shaper
+      flags: [ admin-perm ]
+
+      do:
+        request:
+          attributes:
+            - ifindex
+            - inputs
+            - output
+        reply:
+          attributes:
+            - handle
