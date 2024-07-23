@@ -4769,58 +4769,34 @@ static netdev_features_t iavf_fix_features(struct net_device *netdev,
 	return iavf_fix_strip_features(adapter, features);
 }
 
-/**
- * iavf_verify_shaper_info - check that shaper info received
- * @dev: pointer to netdev
- * @nr: The number of items in the @handles and @shapers array
- * @shapers: configuration of shaper.
- * @extack: Netlink extended ACK for reporting errors
- *
- * Returns:
- * * %0 - Success
- * * %-EOPNOTSUPP - Driver doesn't support this scope.
- * * %-EINVAL - Invalid queue number in input
- **/
-static int
-iavf_verify_shaper_info(struct net_device *dev, int nr,
-			const struct net_shaper_info *shapers,
-			struct netlink_ext_ack *extack)
+static int iavf_verify_handle(struct net_device *dev, u32 handle,
+			      struct netlink_ext_ack *extack)
 {
 	struct iavf_adapter *adapter = netdev_priv(dev);
 	enum net_shaper_scope scope;
-	int i, qid;
+	int qid;
 
-	for (i = 0; i < nr; i++) {
-		scope = net_shaper_handle_scope(shapers[i].handle);
-		qid = net_shaper_handle_id(shapers[i].handle);
+	scope = net_shaper_handle_scope(handle);
+	qid = net_shaper_handle_id(handle);
 
-		if (scope == NET_SHAPER_SCOPE_QUEUE) {
-			if (qid >= adapter->num_active_queues) {
-				NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle at entry %d, queued id %d max %d",
-						   i, qid,
-						   adapter->num_active_queues);
-				return -EINVAL;
-			}
-		} else {
-			NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle at entry %d, unsupported scope %d",
-					   i, scope);
-			return -EOPNOTSUPP;
-		}
+	if (scope != NET_SHAPER_SCOPE_QUEUE) {
+		NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle %x, unsupported scope %d",
+				   handle, scope);
+		return -EOPNOTSUPP;
+	}
 
-		if (shapers[i].parent) {
-			NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle at entry %d, unsupported move to parent handle %x",
-					   i, shapers[i].parent);
-			return -EOPNOTSUPP;
-		}
+	if (qid >= adapter->num_active_queues) {
+		NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle %x, queued id %d max %d",
+				   handle, qid, adapter->num_active_queues);
+		return -EINVAL;
 	}
 	return 0;
 }
 
 /**
- * iavf_shaper_set - check that shaper info received
+ * iavf_verify_shaper_info - check that shaper info received
  * @dev: pointer to netdev
- * @nr: The number of items in the @handles and @shapers array
- * @shapers: configuration of shaper.
+ * @shaper: configuration of shaper.
  * @extack: Netlink extended ACK for reporting errors
  *
  * Returns:
@@ -4829,91 +4805,93 @@ iavf_verify_shaper_info(struct net_device *dev, int nr,
  * * %-EINVAL - Invalid queue number in input
  **/
 static int
-iavf_shaper_set(struct net_device *dev, int nr,
-		const struct net_shaper_info *shapers,
+iavf_verify_shaper_info(struct net_device *dev,
+			const struct net_shaper_info *shaper,
+			struct netlink_ext_ack *extack)
+{
+	return iavf_verify_handle(dev, shaper->handle, extack);
+}
+
+/**
+ * iavf_shaper_set - check that shaper info received
+ * @dev: pointer to netdev
+ * @shaper: configuration of shaper.
+ * @extack: Netlink extended ACK for reporting errors
+ *
+ * Returns:
+ * * %0 - Success
+ * * %-EOPNOTSUPP - Driver doesn't support this scope.
+ * * %-EINVAL - Invalid queue number in input
+ **/
+static int
+iavf_shaper_set(struct net_device *dev,
+		const struct net_shaper_info *shaper,
 		struct netlink_ext_ack *extack)
 {
 	struct iavf_adapter *adapter = netdev_priv(dev);
 	bool need_cfg_update = false;
 	enum net_shaper_scope scope;
 	int id, ret = 0;
-	u32 i;
 
-	ret = iavf_verify_shaper_info(dev, nr, shapers, extack);
+	ret = iavf_verify_shaper_info(dev, shaper, extack);
 	if (ret)
 		return ret;
 
-	for (i = 0; i < nr; i++) {
-		scope = net_shaper_handle_scope(shapers[i].handle);
-		id = net_shaper_handle_id(shapers[i].handle);
+	scope = net_shaper_handle_scope(shaper->handle);
+	id = net_shaper_handle_id(shaper->handle);
 
-		if (scope == NET_SHAPER_SCOPE_QUEUE) {
-			struct iavf_ring *tx_ring = &adapter->tx_rings[id];
+	if (scope == NET_SHAPER_SCOPE_QUEUE) {
+		struct iavf_ring *tx_ring = &adapter->tx_rings[id];
 
-			tx_ring->q_shaper.bw_min =
-					div_u64(shapers[i].bw_min, 1000);
-			tx_ring->q_shaper.bw_max =
-					div_u64(shapers[i].bw_max, 1000);
-			tx_ring->q_shaper_update = true;
-			need_cfg_update = true;
-		}
+		tx_ring->q_shaper.bw_min = div_u64(shaper->bw_min, 1000);
+		tx_ring->q_shaper.bw_max = div_u64(shaper->bw_max, 1000);
+		tx_ring->q_shaper_update = true;
+		need_cfg_update = true;
 	}
 
-	if (need_cfg_update) {
+	if (need_cfg_update)
 		adapter->aq_required |= IAVF_FLAG_AQ_CONFIGURE_QUEUES_BW;
-		ret = i;
-	}
 
-	return ret;
+	return 0;
 }
 
-static int iavf_shaper_del(struct net_device *dev, int nr,
-			   const u32 *handles,
+static int iavf_shaper_del(struct net_device *dev,
+			   const u32 handle,
 			   struct netlink_ext_ack *extack)
 {
 	struct iavf_adapter *adapter = netdev_priv(dev);
 	bool need_cfg_update = false;
 	enum net_shaper_scope scope;
-	int i, qid, ret = 0;
+	int qid, ret;
 
-	for (i = 0; i < nr; i++) {
-		scope = net_shaper_handle_scope(handles[i]);
-		qid = net_shaper_handle_id(handles[i]);
+	ret = iavf_verify_handle(dev, handle, extack);
+	if (ret < 0)
+		return ret;
 
-		if (scope == NET_SHAPER_SCOPE_QUEUE) {
-			if (qid >= adapter->num_active_queues) {
-				NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle at entry %d, queued id %d max %d",
-						   i, qid,
-						   adapter->num_active_queues);
-				return -EINVAL;
-			}
-		} else {
-			NL_SET_ERR_MSG_FMT(extack, "Invalid shaper handle at entry %d, unsupported scope %d",
-					   i, scope);
-			return -EOPNOTSUPP;
-		}
+	scope = net_shaper_handle_scope(handle);
+	qid = net_shaper_handle_id(handle);
+
+	if (scope == NET_SHAPER_SCOPE_QUEUE) {
+		struct iavf_ring *tx_ring = &adapter->tx_rings[qid];
+
+		tx_ring->q_shaper.bw_min = 0;
+		tx_ring->q_shaper.bw_max = 0;
+		tx_ring->q_shaper_update = true;
+		need_cfg_update = true;
 	}
 
-	for (i = 0; i < nr; i++) {
-		scope = net_shaper_handle_scope(handles[i]);
-		qid = net_shaper_handle_id(handles[i]);
-
-		if (scope == NET_SHAPER_SCOPE_QUEUE) {
-			struct iavf_ring *tx_ring = &adapter->tx_rings[qid];
-
-			tx_ring->q_shaper.bw_min = 0;
-			tx_ring->q_shaper.bw_max = 0;
-			tx_ring->q_shaper_update = true;
-			need_cfg_update = true;
-		}
-	}
-
-	if (need_cfg_update) {
+	if (need_cfg_update)
 		adapter->aq_required |= IAVF_FLAG_AQ_CONFIGURE_QUEUES_BW;
-		ret = i;
-	}
 
-	return ret;
+	return 0;
+}
+
+static int iavf_shaper_group(struct net_device *dev, int nr_inputs,
+			     const struct net_shaper_info *inputs,
+			     const struct net_shaper_info *output,
+			     struct netlink_ext_ack *extack)
+{
+	return -EOPNOTSUPP;
 }
 
 static int iavf_shaper_cap(struct net_device *dev, enum net_shaper_scope scope,
@@ -4931,6 +4909,7 @@ static int iavf_shaper_cap(struct net_device *dev, enum net_shaper_scope scope,
 static const struct net_shaper_ops iavf_shaper_ops = {
 	.set = iavf_shaper_set,
 	.delete = iavf_shaper_del,
+	.group = iavf_shaper_group,
 	.capabilities = iavf_shaper_cap,
 };
 
