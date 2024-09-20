@@ -74,7 +74,9 @@ enum {
 			 (1ULL << VHOST_NET_F_VIRTIO_NET_HDR) |
 			 (1ULL << VIRTIO_NET_F_MRG_RXBUF) |
 			 (1ULL << VIRTIO_F_ACCESS_PLATFORM) |
-			 (1ULL << VIRTIO_F_RING_RESET)
+			 (1ULL << VIRTIO_F_RING_RESET) |
+			 (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO) |
+			 (1ULL << VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO)
 };
 
 enum {
@@ -1602,12 +1604,16 @@ done:
 static int vhost_net_set_features(struct vhost_net *n, u64 features)
 {
 	size_t vhost_hlen, sock_hlen, hdr_len;
+	bool has_tunnel;
 	int i;
 
 	hdr_len = (features & ((1ULL << VIRTIO_NET_F_MRG_RXBUF) |
 			       (1ULL << VIRTIO_F_VERSION_1))) ?
 			sizeof(struct virtio_net_hdr_mrg_rxbuf) :
 			sizeof(struct virtio_net_hdr);
+	has_tunnel = !!(features & (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO |
+				    1ULL << VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO));
+	hdr_len += has_tunnel ? sizeof(struct virtio_net_hdr_tunnel) : 0;
 	if (features & (1 << VHOST_NET_F_VIRTIO_NET_HDR)) {
 		/* vhost provides vnet_hdr */
 		vhost_hlen = hdr_len;
