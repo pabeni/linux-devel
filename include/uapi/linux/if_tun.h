@@ -61,6 +61,7 @@
 #define TUNSETFILTEREBPF _IOR('T', 225, int)
 #define TUNSETCARRIER _IOW('T', 226, int)
 #define TUNGETDEVNETNS _IO('T', 227)
+#define TUNSETTNLOFFLOAD  _IOW('T', 228, unsigned int)
 
 /* TUNSETIFF ifr flags */
 #define IFF_TUN		0x0001
@@ -98,6 +99,11 @@
 struct tun_pi {
 	__u16  flags;
 	__be16 proto;
+};
+
+struct tun_tnl_offload {
+	__u16 offset;
+	__u8  csum;
 };
 
 /*
