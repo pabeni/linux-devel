@@ -240,4 +240,125 @@ static inline int virtio_net_hdr_from_skb(const struct sk_buff *skb,
 	return 0;
 }
 
+static inline unsigned int virtio_l3min(bool is_ipv6)
+{
+	return is_ipv6 ? sizeof(struct ipv6hdr) : sizeof(struct iphdr);
+}
+
+static inline int virtio_net_hdr_tnl_to_skb(struct sk_buff *skb,
+					    struct virtio_net_hdr *hdr,
+					    unsigned int tnl_hdr_offset,
+					    bool little_endian,
+					    bool has_mac)
+{
+	u8 gso_tunnel_type = hdr->gso_type & VIRTIO_NET_HDR_GSO_UDP_TUNNEL;
+	unsigned int inner_nh, outer_th, inner_th;
+	unsigned int inner_l3min, outer_l3min;
+	struct virtio_net_hdr_tunnel *tnl;
+	u8 gso_inner_type;
+	bool outer_isv6;
+	int ret;
+
+	if (!gso_tunnel_type)
+		return virtio_net_hdr_to_skb(skb, hdr, little_endian);
+
+	/* Tunnel not supported/negotiated, but the hdr asks for it. */
+	if (!tnl_hdr_offset)
+		return -EINVAL;
+
+	/* Either ipv4 or ipv6. */
+	if (gso_tunnel_type & VIRTIO_NET_HDR_GSO_UDP_TUNNEL_IPV4 &&
+	    gso_tunnel_type & VIRTIO_NET_HDR_GSO_UDP_TUNNEL_IPV6)
+		return -EINVAL;
+
+	/* No UDP fragments over UDP tunnel. */
+	gso_inner_type = hdr->gso_type & ~(VIRTIO_NET_HDR_GSO_ECN |
+					   gso_tunnel_type);
+	if (!gso_inner_type || gso_inner_type == VIRTIO_NET_HDR_GSO_UDP)
+		return -EINVAL;
+
+	/* Relay on csum being present. */
+	if (!(hdr->flags & VIRTIO_NET_HDR_F_NEEDS_CSUM))
+		return -EINVAL;
+
+	/* Validate offsets. */
+	outer_isv6 = gso_tunnel_type & VIRTIO_NET_HDR_GSO_UDP_TUNNEL_IPV6;
+	inner_l3min = virtio_l3min(gso_inner_type == VIRTIO_NET_HDR_GSO_TCPV6);
+	outer_l3min = virtio_l3min(outer_isv6);
+	if (has_mac)
+		outer_l3min += ETH_HLEN;
+
+	tnl = ((void *)hdr) + tnl_hdr_offset;
+	inner_th = __virtio16_to_cpu(little_endian, hdr->csum_start);
+	inner_nh = __virtio16_to_cpu(little_endian, tnl->inner_nh_offset);
+	outer_th = __virtio16_to_cpu(little_endian, tnl->outer_th_offset);
+	if (outer_th < outer_l3min ||
+	    inner_nh < outer_th + sizeof(struct udphdr) ||
+	    inner_th < inner_nh + inner_l3min)
+		return -EINVAL;
+
+	/* Let the basic parsing deal with plain GSO features. */
+	hdr->gso_type &= ~gso_tunnel_type;
+	ret = virtio_net_hdr_to_skb(skb, hdr, little_endian);
+	hdr->gso_type |= gso_tunnel_type;
+	if (ret)
+		return ret;
+
+	skb_set_inner_protocol(skb, outer_isv6 ? htons(ETH_P_IPV6) :
+						 htons(ETH_P_IP));
+	if (hdr->flags & VIRTIO_NET_HDR_F_UDP_TUNNEL_CSUM)
+		skb_shinfo(skb)->gso_type |= SKB_GSO_UDP_TUNNEL_CSUM;
+	else
+		skb_shinfo(skb)->gso_type |= SKB_GSO_UDP_TUNNEL;
+	skb->inner_transport_header = inner_th;
+	skb->inner_network_header = inner_nh;
+	skb->transport_header = outer_th;
+	return 0;
+}
+
+static inline int virtio_net_hdr_tnl_from_skb(struct sk_buff *skb,
+					      struct virtio_net_hdr *hdr,
+					      unsigned int tnl_offset,
+					      bool little_endian,
+					      int vlan_hlen)
+{
+	struct virtio_net_hdr_tunnel *tnl;
+	unsigned int inner_nh, outer_th;
+	int tnl_gso_type;
+	int ret;
+
+	tnl_gso_type = skb_shinfo(skb)->gso_type & (SKB_GSO_UDP_TUNNEL |
+						    SKB_GSO_UDP_TUNNEL_CSUM);
+	if (!tnl_gso_type)
+		return virtio_net_hdr_from_skb(skb, hdr, little_endian, false,
+					       vlan_hlen);
+
+	/* Tunnel support not negotiated but skb ask for it. */
+	if (!tnl_offset)
+		return -EINVAL;
+
+	/* Let the basic parsing deal with plain GSO features. */
+	skb_shinfo(skb)->gso_type &= ~tnl_gso_type;
+	ret = virtio_net_hdr_from_skb(skb, hdr, little_endian, false,
+				      vlan_hlen);
+	skb_shinfo(skb)->gso_type |= tnl_gso_type;
+	if (ret)
+		return ret;
+
+	if (skb->protocol == htons(ETH_P_IPV6))
+		hdr->gso_type |= VIRTIO_NET_HDR_GSO_UDP_TUNNEL_IPV6;
+	else
+		hdr->gso_type |= VIRTIO_NET_HDR_GSO_UDP_TUNNEL_IPV4;
+
+	if (skb_shinfo(skb)->flags & SKB_GSO_UDP_TUNNEL_CSUM)
+		hdr->flags |= VIRTIO_NET_HDR_F_UDP_TUNNEL_CSUM;
+
+	tnl = ((void *)hdr) + tnl_offset;
+	inner_nh = skb->inner_network_header - skb_headroom(skb);
+	outer_th = skb->transport_header - skb_headroom(skb);
+	tnl->inner_nh_offset =  __cpu_to_virtio16(little_endian, inner_nh);
+	tnl->outer_th_offset =  __cpu_to_virtio16(little_endian, outer_th);
+	return 0;
+}
+
 #endif /* _LINUX_VIRTIO_NET_H */
