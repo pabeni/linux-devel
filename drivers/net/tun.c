@@ -201,6 +201,7 @@ struct tun_struct {
 	int			tnl_offset;
 	struct tap_filter	txflt;
 	struct sock_fprog	fprog;
+	bool			csum_complete;
 	/* protected by rtnl lock */
 	bool			filter_attached;
 	u32			msg_enable;
@@ -2181,6 +2182,12 @@ static ssize_t tun_put_user(struct tun_struct *tun,
 			WARN_ON_ONCE(1);
 			return -EINVAL;
 		}
+		if (unlikely(READ_ONCE(tun->csum_complete)) && !skb_is_gso(skb)) {
+			gso->flags &= ~VIRTIO_NET_HDR_F_NEEDS_CSUM;
+			gso->flags |= VIRTIO_NET_HDR_F_DATA_VALID;
+			if (skb->encapsulation)
+				gso->flags |= VIRTIO_NET_HDR_F_UDP_TUNNEL_CSUM;
+		}
 
 		if (copy_to_iter(gso, parsed_size, iter) != parsed_size)
 			return -EFAULT;
@@ -3023,6 +3030,7 @@ static int set_tnl_offload(struct tun_struct *tun, void __user *arg)
 		tun->set_features |= NETIF_F_GSO_UDP_TUNNEL_CSUM;
 	else
 		tun->set_features &= ~NETIF_F_GSO_UDP_TUNNEL_CSUM;
+	WRITE_ONCE(tun->csum_complete, !!(tnl.csum > 1));
 
 	/* pairs with READ_ONCE() in the datapath */
 	WRITE_ONCE(tun->tnl_offset, tnl.offset);
