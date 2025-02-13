@@ -287,7 +287,8 @@ static inline void skb_gro_incr_csum_unnecessary(struct sk_buff *skb)
 
 static inline bool __skb_gro_checksum_convert_check(struct sk_buff *skb)
 {
-	return (NAPI_GRO_CB(skb)->csum_cnt == 0 &&
+	return (skb->ip_summed != CHECKSUM_PARTIAL &&
+		NAPI_GRO_CB(skb)->csum_cnt == 0 &&
 		!NAPI_GRO_CB(skb)->csum_valid);
 }
 
