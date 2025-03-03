@@ -1805,6 +1805,11 @@ enum netdev_reg_state {
  *				and drivers will need to set them appropriately.
  *
  *	@mpls_features:	Mask of features inheritable by MPLS
+ *	@fixedif_features:	Mask of features requiring FIXEDID packets;
+ *				the stack will strip TSO when transmitting
+ *				packets that could require fragmentation and
+ *				asking such features; drivers with limited
+ *				TSO support must fill this field appropriately.
  *	@gso_partial_features: value(s) from NETIF_F_GSO\*
  *
  *	@ifindex:	interface index
@@ -2193,6 +2198,7 @@ struct net_device {
 	netdev_features_t	vlan_features;
 	netdev_features_t	hw_enc_features;
 	netdev_features_t	mpls_features;
+	netdev_features_t	fixedid_features;
 
 	unsigned int		min_mtu;
 	unsigned int		max_mtu;

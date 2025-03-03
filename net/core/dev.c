@@ -3749,8 +3749,12 @@ static netdev_features_t gso_features_check(const struct sk_buff *skb,
 		struct iphdr *iph = skb->encapsulation ?
 				    inner_ip_hdr(skb) : ip_hdr(skb);
 
-		if (!(iph->frag_off & htons(IP_DF)))
+		if (!(iph->frag_off & htons(IP_DF))) {
 			features &= ~NETIF_F_TSO_MANGLEID;
+			if (!net_gso_ok(skb_shinfo(skb)->gso_type,
+					~dev->fixedid_features))
+				features &= ~NETIF_F_TSO;
+		}
 	}
 
 	return features;
