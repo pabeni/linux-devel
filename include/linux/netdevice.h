@@ -2134,7 +2134,6 @@ struct net_device {
 	/* RX read-mostly hotpath */
 	__cacheline_group_begin(net_device_read_rx);
 	struct bpf_prog __rcu	*xdp_prog;
-	struct list_head	ptype_specific;
 	int			ifindex;
 	unsigned int		real_num_rx_queues;
 	struct netdev_rx_queue	*_rx;
@@ -2174,6 +2173,7 @@ struct net_device {
 	struct list_head	unreg_list;
 	struct list_head	close_list;
 	struct list_head	ptype_all;
+	struct list_head	ptype_specific;
 
 	struct {
 		struct list_head upper;

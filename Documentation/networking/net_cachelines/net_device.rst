@@ -21,8 +21,6 @@ struct list_head                    dev_list
 struct list_head                    napi_list
 struct list_head                    unreg_list
 struct list_head                    close_list
-struct list_head                    ptype_all                   read_mostly                             dev_nit_active(tx)
-struct list_head                    ptype_specific                                  read_mostly         deliver_ptype_list_skb/__netif_receive_skb_core(rx)
 struct                              adj_list
 unsigned_int                        flags                       read_mostly         read_mostly         __dev_queue_xmit,__dev_xmit_skb,ip6_output,__ip6_finish_output(tx);ip6_rcv_core(rx)
 xdp_features_t                      xdp_features

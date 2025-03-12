@@ -603,11 +603,20 @@ static inline struct list_head *ptype_head(const struct packet_type *pt)
 void dev_add_pack(struct packet_type *pt)
 {
 	struct list_head *head = ptype_head(pt);
+	struct net *net;
 
 	if (WARN_ON_ONCE(!head))
 		return;
 
 	spin_lock(&ptype_lock);
+	net = pt->dev ? dev_net(pt->dev) : pt->af_packet_net;
+	if (net) {
+		if (pt->type == htons(ETH_P_ALL))
+			net_ptype_all_set_cnt(net, net_ptype_all_cnt(net) + 1);
+		else
+			net_ptype_specific_set_cnt(net,
+					      net_ptype_specific_cnt(net) + 1);
+	}
 	list_add_rcu(&pt->list, head);
 	spin_unlock(&ptype_lock);
 }
@@ -630,6 +639,7 @@ void __dev_remove_pack(struct packet_type *pt)
 {
 	struct list_head *head = ptype_head(pt);
 	struct packet_type *pt1;
+	struct net *net;
 
 	if (!head)
 		return;
@@ -637,10 +647,19 @@ void __dev_remove_pack(struct packet_type *pt)
 	spin_lock(&ptype_lock);
 
 	list_for_each_entry(pt1, head, list) {
-		if (pt == pt1) {
-			list_del_rcu(&pt->list);
+		if (pt != pt1)
+			continue;
+		list_del_rcu(&pt->list);
+		net = pt->dev ? dev_net(pt->dev) : pt->af_packet_net;
+		if (!net)
 			goto out;
-		}
+
+		if (pt->type == htons(ETH_P_ALL))
+			net_ptype_all_set_cnt(net, net_ptype_all_cnt(net) - 1);
+		else
+			net_ptype_specific_set_cnt(net,
+					      net_ptype_specific_cnt(net) - 1);
+		goto out;
 	}
 
 	pr_warn("dev_remove_pack: %p not found\n", pt);
@@ -2469,8 +2488,7 @@ bool dev_nit_active_rcu(const struct net_device *dev)
 	/* Callers may hold either RCU or RCU BH lock */
 	WARN_ON_ONCE(!rcu_read_lock_held() && !rcu_read_lock_bh_held());
 
-	return !list_empty(&dev_net(dev)->ptype_all) ||
-	       !list_empty(&dev->ptype_all);
+	return net_ptype_all_cnt(dev_net_rcu(dev)) > 0;
 }
 EXPORT_SYMBOL_GPL(dev_nit_active_rcu);
 
@@ -5665,11 +5683,55 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
 	return 0;
 }
 
+static int deliver_ptype_all_skb(struct sk_buff *skb, int ret,
+				 struct packet_type **ppt_prev,
+				 struct net_device *orig_dev)
+{
+	struct packet_type *ptype, *pt_prev = *ppt_prev;
+	struct net *net = dev_net_rcu(skb->dev);
+
+	list_for_each_entry_rcu(ptype, &net->ptype_all, list) {
+		if (pt_prev)
+			ret = deliver_skb(skb, pt_prev, orig_dev);
+		pt_prev = ptype;
+	}
+
+	list_for_each_entry_rcu(ptype, &skb->dev->ptype_all, list) {
+		if (pt_prev)
+			ret = deliver_skb(skb, pt_prev, orig_dev);
+		pt_prev = ptype;
+	}
+	*ppt_prev = pt_prev;
+	return ret;
+}
+
+static void deliver_ptype_specific_skb(struct sk_buff *skb, bool deliver_exact,
+				       struct packet_type **ppt_prev,
+				       struct net_device *orig_dev,
+				       __be16 type)
+{
+	/* The only per net ptype user - packet socket - matches
+	 * the target netns vs dev_net(skb->dev); we need to
+	 * process only such netns even when orig_dev lays in a
+	 * different one.
+	 */
+	if (!deliver_exact)
+		deliver_ptype_list_skb(skb, ppt_prev, orig_dev, type,
+				       &dev_net_rcu(skb->dev)->ptype_specific);
+
+	deliver_ptype_list_skb(skb, ppt_prev, orig_dev, type,
+			       &orig_dev->ptype_specific);
+
+	if (unlikely(skb->dev != orig_dev))
+		deliver_ptype_list_skb(skb, ppt_prev, orig_dev, type,
+				       &skb->dev->ptype_specific);
+}
+
 static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
 {
-	struct packet_type *ptype, *pt_prev;
 	rx_handler_func_t *rx_handler;
+	struct packet_type *pt_prev;
 	struct sk_buff *skb = *pskb;
 	struct net_device *orig_dev;
 	bool deliver_exact = false;
@@ -5726,18 +5788,8 @@ another_round:
 	if (pfmemalloc)
 		goto skip_taps;
 
-	list_for_each_entry_rcu(ptype, &dev_net_rcu(skb->dev)->ptype_all,
-				list) {
-		if (pt_prev)
-			ret = deliver_skb(skb, pt_prev, orig_dev);
-		pt_prev = ptype;
-	}
-
-	list_for_each_entry_rcu(ptype, &skb->dev->ptype_all, list) {
-		if (pt_prev)
-			ret = deliver_skb(skb, pt_prev, orig_dev);
-		pt_prev = ptype;
-	}
+	if (net_ptype_all_cnt(dev_net(skb->dev)) > 0)
+		ret = deliver_ptype_all_skb(skb, ret, &pt_prev, orig_dev);
 
 skip_taps:
 #ifdef CONFIG_NET_INGRESS
@@ -5835,27 +5887,14 @@ check_vlan_id:
 	type = skb->protocol;
 
 	/* deliver only exact match when indicated */
-	if (likely(!deliver_exact)) {
+	if (likely(!deliver_exact))
 		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
 				       &ptype_base[ntohs(type) &
 						   PTYPE_HASH_MASK]);
 
-		/* orig_dev and skb->dev could belong to different netns;
-		 * Even in such case we need to traverse only the list
-		 * coming from skb->dev, as the ptype owner (packet socket)
-		 * will use dev_net(skb->dev) to do namespace filtering.
-		 */
-		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
-				       &dev_net_rcu(skb->dev)->ptype_specific);
-	}
-
-	deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
-			       &orig_dev->ptype_specific);
-
-	if (unlikely(skb->dev != orig_dev)) {
-		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
-				       &skb->dev->ptype_specific);
-	}
+	if (net_ptype_specific_cnt(dev_net(skb->dev)) > 0)
+		deliver_ptype_specific_skb(skb, deliver_exact, &pt_prev,
+					   orig_dev, type);
 
 	if (pt_prev) {
 		if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
@@ -12581,7 +12620,6 @@ static void __init net_dev_struct_check(void)
 	CACHELINE_ASSERT_GROUP_SIZE(struct net_device, net_device_read_txrx, 46);
 
 	/* RX read-mostly hotpath */
-	CACHELINE_ASSERT_GROUP_MEMBER(struct net_device, net_device_read_rx, ptype_specific);
 	CACHELINE_ASSERT_GROUP_MEMBER(struct net_device, net_device_read_rx, ifindex);
 	CACHELINE_ASSERT_GROUP_MEMBER(struct net_device, net_device_read_rx, real_num_rx_queues);
 	CACHELINE_ASSERT_GROUP_MEMBER(struct net_device, net_device_read_rx, _rx);
@@ -12596,7 +12634,7 @@ static void __init net_dev_struct_check(void)
 #ifdef CONFIG_NET_XGRESS
 	CACHELINE_ASSERT_GROUP_MEMBER(struct net_device, net_device_read_rx, tcx_ingress);
 #endif
-	CACHELINE_ASSERT_GROUP_SIZE(struct net_device, net_device_read_rx, 92);
+	CACHELINE_ASSERT_GROUP_SIZE(struct net_device, net_device_read_rx, 76);
 }
 
 /*

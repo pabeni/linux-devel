@@ -575,6 +575,26 @@ static inline void fnhe_genid_bump(struct net *net)
 	atomic_inc(&net->fnhe_genid);
 }
 
+static inline int net_ptype_all_cnt(const struct net *net)
+{
+	return READ_ONCE(net->ipv4.ptype_all_count);
+}
+
+static inline void net_ptype_all_set_cnt(struct net *net, int cnt)
+{
+	WRITE_ONCE(net->ipv4.ptype_all_count, cnt);
+}
+
+static inline int net_ptype_specific_cnt(const struct net *net)
+{
+	return READ_ONCE(net->ipv4.ptype_specific_count);
+}
+
+static inline void net_ptype_specific_set_cnt(struct net *net, int cnt)
+{
+	WRITE_ONCE(net->ipv4.ptype_specific_count, cnt);
+}
+
 #ifdef CONFIG_NET
 void net_ns_init(void);
 #else

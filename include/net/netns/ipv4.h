@@ -75,6 +75,8 @@ struct netns_ipv4 {
 	/* TXRX readonly hotpath cache lines */
 	__cacheline_group_begin(netns_ipv4_read_txrx);
 	u8 sysctl_tcp_moderate_rcvbuf;
+	/* 2 bytes hole */
+	int ptype_all_count;
 	__cacheline_group_end(netns_ipv4_read_txrx);
 
 	/* RX readonly hotpath cache line */
@@ -82,9 +84,10 @@ struct netns_ipv4 {
 	u8 sysctl_ip_early_demux;
 	u8 sysctl_tcp_early_demux;
 	u8 sysctl_tcp_l3mdev_accept;
-	/* 3 bytes hole, try to pack */
+	/* 1 bytes hole, try to pack */
 	int sysctl_tcp_reordering;
 	int sysctl_tcp_rmem[3];
+	int ptype_specific_count;
 	__cacheline_group_end(netns_ipv4_read_rx);
 
 	struct inet_timewait_death_row tcp_death_row;
