@@ -590,7 +590,9 @@ static ssize_t tap_get_user(struct tap_queue *q, void *msg_control,
 	if (q->flags & IFF_VNET_HDR) {
 		vnet_hdr_len = READ_ONCE(q->vnet_hdr_sz);
 
-		hdr_len = tun_vnet_hdr_get(vnet_hdr_len, q->flags, from, &vnet_hdr);
+		hdr_len = tun_vnet_hdr_get(vnet_hdr_len,
+					   sizeof(struct virtio_net_hdr),
+					   q->flags, from, &vnet_hdr);
 		if (hdr_len < 0) {
 			err = hdr_len;
 			goto err;
@@ -715,11 +717,13 @@ static ssize_t tap_put_user(struct tap_queue *q,
 
 		vnet_hdr_len = READ_ONCE(q->vnet_hdr_sz);
 
-		ret = tun_vnet_hdr_from_skb(q->flags, NULL, skb, &vnet_hdr);
+		ret = tun_vnet_hdr_from_skb(q->flags, 0, NULL, skb, &vnet_hdr);
 		if (ret)
 			return ret;
 
-		ret = tun_vnet_hdr_put(vnet_hdr_len, iter, &vnet_hdr);
+		ret = tun_vnet_hdr_put(vnet_hdr_len,
+				       sizeof(struct virtio_net_hdr), iter,
+				       &vnet_hdr);
 		if (ret)
 			return ret;
 	}
