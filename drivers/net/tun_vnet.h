@@ -107,16 +107,16 @@ static inline long tun_vnet_ioctl(int *vnet_hdr_sz, unsigned int *flags,
 	}
 }
 
-static inline int tun_vnet_hdr_get(int sz, unsigned int flags,
+static inline int tun_vnet_hdr_get(int sz, int parsed_size, unsigned int flags,
 				   struct iov_iter *from,
 				   struct virtio_net_hdr *hdr)
 {
 	u16 hdr_len;
 
-	if (iov_iter_count(from) < sz)
+	if (iov_iter_count(from) < sz || sz < parsed_size)
 		return -EINVAL;
 
-	if (!copy_from_iter_full(hdr, sizeof(*hdr), from))
+	if (!copy_from_iter_full(hdr, parsed_size, from))
 		return -EFAULT;
 
 	hdr_len = tun_vnet16_to_cpu(flags, hdr->hdr_len);
@@ -129,21 +129,22 @@ static inline int tun_vnet_hdr_get(int sz, unsigned int flags,
 	if (hdr_len > iov_iter_count(from))
 		return -EINVAL;
 
-	iov_iter_advance(from, sz - sizeof(*hdr));
+	iov_iter_advance(from, sz - parsed_size);
 
 	return hdr_len;
 }
 
-static inline int tun_vnet_hdr_put(int sz, struct iov_iter *iter,
+static inline int tun_vnet_hdr_put(int sz, int parsed_size,
+				   struct iov_iter *iter,
 				   const struct virtio_net_hdr *hdr)
 {
-	if (unlikely(iov_iter_count(iter) < sz))
+	if (unlikely(iov_iter_count(iter) < sz) || sz < parsed_size)
 		return -EINVAL;
 
-	if (unlikely(copy_to_iter(hdr, sizeof(*hdr), iter) != sizeof(*hdr)))
+	if (unlikely(copy_to_iter(hdr, parsed_size, iter) != parsed_size))
 		return -EFAULT;
 
-	if (iov_iter_zero(sz - sizeof(*hdr), iter) != sz - sizeof(*hdr))
+	if (iov_iter_zero(sz - parsed_size, iter) != sz - parsed_size)
 		return -EFAULT;
 
 	return 0;
@@ -156,15 +157,16 @@ static inline int tun_vnet_hdr_to_skb(unsigned int flags, struct sk_buff *skb,
 }
 
 static inline int tun_vnet_hdr_from_skb(unsigned int flags,
+					int tnl_offset,
 					const struct net_device *dev,
 					const struct sk_buff *skb,
 					struct virtio_net_hdr *hdr)
 {
 	int vlan_hlen = skb_vlan_tag_present(skb) ? VLAN_HLEN : 0;
 
-	if (virtio_net_hdr_from_skb(skb, hdr,
-				    tun_vnet_is_little_endian(flags), true,
-				    vlan_hlen)) {
+	if (virtio_net_hdr_tnl_from_skb(skb, hdr, tnl_offset,
+					tun_vnet_is_little_endian(flags),
+					vlan_hlen)) {
 		struct skb_shared_info *sinfo = skb_shinfo(skb);
 
 		if (net_ratelimit()) {
