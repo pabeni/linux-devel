@@ -62,13 +62,18 @@ void udp_tunnel_update_gro_lookup(struct net *net, struct sock *sk, bool add)
 	else if (up->tunnel_list.pprev)
 		hlist_del_init(&up->tunnel_list);
 
+	pr_warn("udp_tunnel_update_gro_lookup %p net %p sock %d add\n", net, sk, add);
+
 	if (udp_tunnel_gro->list.first &&
 	    !udp_tunnel_gro->list.first->next) {
 		tup = hlist_entry(udp_tunnel_gro->list.first, struct udp_sock,
 				  tunnel_list);
 
+		pr_warn(" enabling gro fast lookup on sk %p port %d\n", tup, ((struct sock *)tup)->sk_num);
 		rcu_assign_pointer(udp_tunnel_gro->sk, (struct sock *)tup);
 	} else {
+		if (udp_tunnel_gro->sk)
+			pr_warn(" disabling gro fast lookup on net %p\n", net);
 		RCU_INIT_POINTER(udp_tunnel_gro->sk, NULL);
 	}
 
@@ -82,6 +87,8 @@ void udp_tunnel_update_gro_rcv(struct sock *sk, bool add)
 	struct udp_sock *up = udp_sk(sk);
 	int i, old_gro_type_nr;
 
+	pr_err("sk %p add %d gro %p\n", sk, add, up->gro_receive);
+
 	if (!UDP_MAX_TUNNEL_TYPES || !up->gro_receive)
 		return;
 
@@ -94,6 +101,9 @@ void udp_tunnel_update_gro_rcv(struct sock *sk, bool add)
 	for (i = 0; i < udp_tunnel_gro_type_nr; i++)
 		if (udp_tunnel_gro_types[i].gro_receive == up->gro_receive)
 			cur = &udp_tunnel_gro_types[i];
+
+	pr_warn("udp_tunnel_update_gro_rcv sk %p gro %p add %d nr %d cur %p\n",
+		sk, up->gro_receive, add, udp_tunnel_gro_type_nr, cur);
 
 	old_gro_type_nr = udp_tunnel_gro_type_nr;
 	if (add) {
@@ -131,10 +141,12 @@ void udp_tunnel_update_gro_rcv(struct sock *sk, bool add)
 	}
 
 	if (udp_tunnel_gro_type_nr == 1) {
+		pr_warn(" enable static call on %p\n", udp_tunnel_gro_types[0].gro_receive);
 		static_call_update(udp_tunnel_gro_rcv,
 				   udp_tunnel_gro_types[0].gro_receive);
 		static_branch_enable(&udp_tunnel_static_call);
 	} else if (old_gro_type_nr == 1) {
+		pr_warn(" disable static call\n");
 		static_branch_disable(&udp_tunnel_static_call);
 		static_call_update(udp_tunnel_gro_rcv, dummy_gro_rcv);
 	}
