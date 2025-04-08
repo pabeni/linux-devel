@@ -539,6 +539,30 @@ static void br_set_gso_limits(struct net_bridge *br)
 	netif_set_tso_max_segs(br->dev, tso_max_segs);
 }
 
+
+#define BR_ENC_FEATURES		(NETIF_F_HW_CSUM | NETIF_F_SG | \
+				 NETIF_F_RXCSUM | NETIF_F_GSO_SOFTWARE | \
+				 NETIF_F_GSO_PARTIAL)
+
+void br_update_features(struct net_device *dev)
+{
+	netdev_features_t enc_features  = BR_ENC_FEATURES;
+	struct net_device *lower;
+	struct list_head *iter;
+
+	netdev_for_each_lower_dev(dev, lower, iter) {
+		enc_features = netdev_increment_features(enc_features,
+							 lower->hw_enc_features,
+							 BR_ENC_FEATURES);
+	}
+
+	dev->hw_enc_features = enc_features | NETIF_F_GSO_ENCAP_ALL |
+				    NETIF_F_HW_VLAN_CTAG_TX |
+				    NETIF_F_HW_VLAN_STAG_TX;
+
+	netdev_update_features(dev);
+}
+
 /*
  * Recomputes features using slave's features
  */
@@ -652,7 +676,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 			netdev_err(dev, "failed to sync bridge static fdb addresses to this port\n");
 	}
 
-	netdev_update_features(br->dev);
+	br_update_features(br->dev);
 
 	br_hr = br->dev->needed_headroom;
 	dev_hr = netdev_get_fwd_headroom(dev);
@@ -748,7 +772,7 @@ int br_del_if(struct net_bridge *br, struct net_device *dev)
 	if (changed_addr)
 		call_netdevice_notifiers(NETDEV_CHANGEADDR, br->dev);
 
-	netdev_update_features(br->dev);
+	br_update_features(br->dev);
 
 	return 0;
 }
