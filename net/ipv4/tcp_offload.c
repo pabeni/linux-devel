@@ -399,9 +399,6 @@ void tcp_gro_complete(struct sk_buff *skb)
 	struct tcphdr *th = tcp_hdr(skb);
 	struct skb_shared_info *shinfo;
 
-	if (skb->encapsulation)
-		skb->inner_transport_header = skb->transport_header;
-
 	skb->csum_start = (unsigned char *)th - skb->head;
 	skb->csum_offset = offsetof(struct tcphdr, check);
 	skb->ip_summed = CHECKSUM_PARTIAL;

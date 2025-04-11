@@ -1526,7 +1526,6 @@ struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb)
 	 * as we already checked checksum over ipv4 header was 0
 	 */
 	skb_gro_pull(skb, sizeof(*iph));
-	skb_set_transport_header(skb, skb_gro_offset(skb));
 
 	pp = indirect_call_gro_receive(tcp4_gro_receive, udp4_gro_receive,
 				       ops->callbacks.gro_receive, head, skb);
@@ -1597,11 +1596,7 @@ int inet_gro_complete(struct sk_buff *skb, int nhoff)
 	__be16 totlen = iph->tot_len;
 	int proto = iph->protocol;
 	int err = -ENOSYS;
-
-	if (skb->encapsulation) {
-		skb_set_inner_protocol(skb, cpu_to_be16(ETH_P_IP));
-		skb_set_inner_network_header(skb, nhoff);
-	}
+	int l3off;
 
 	iph_set_totlen(iph, skb->len - nhoff);
 	csum_replace2(&iph->check, totlen, iph->tot_len);
@@ -1614,9 +1609,13 @@ int inet_gro_complete(struct sk_buff *skb, int nhoff)
 	 * because any hdr with option will have been flushed in
 	 * inet_gro_receive().
 	 */
+	l3off = nhoff;
+	nhoff = nhoff + sizeof(*iph);
+	skb_gro_set_offsets(skb, l3off, nhoff);
+
 	err = INDIRECT_CALL_2(ops->callbacks.gro_complete,
 			      tcp4_gro_complete, udp4_gro_complete,
-			      skb, nhoff + sizeof(*iph));
+			      skb, nhoff);
 
 out:
 	return err;

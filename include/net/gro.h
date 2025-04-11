@@ -424,6 +424,18 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
 				struct udphdr *uh, struct sock *sk);
 int udp_gro_complete(struct sk_buff *skb, int nhoff, udp_lookup_t lookup);
 
+static inline void skb_gro_set_offsets(struct sk_buff *skb, int l3off,
+				       int l4off)
+{
+	if (skb->encapsulation) {
+		skb_set_inner_protocol(skb, cpu_to_be16(ETH_P_IP));
+		skb_set_inner_network_header(skb, l3off);
+		skb_set_inner_transport_header(skb, l4off);
+	}
+
+	skb_set_transport_header(skb, l4off);
+}
+
 static inline struct udphdr *udp_gro_udphdr(struct sk_buff *skb)
 {
 	struct udphdr *uh;

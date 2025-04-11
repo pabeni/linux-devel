@@ -257,6 +257,9 @@ static int gre_gro_complete(struct sk_buff *skb, int nhoff)
 
 	skb_set_inner_mac_header(skb, nhoff + grehlen);
 
+	/* The transport offset presently points to the inner one, fix it */
+	skb_set_transport_header(skb, nhoff);
+
 	return err;
 }
 

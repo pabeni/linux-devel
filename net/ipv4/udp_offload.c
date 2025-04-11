@@ -718,6 +718,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 					NAPI_GRO_CB(skb)->flush = 1;
 					return NULL;
 				}
+				skb_set_transport_header(skb, uoff);
 				ret = skb_gro_receive_list(p, skb);
 			} else {
 				skb_gro_postpull_rcsum(skb, uh,
@@ -872,9 +873,6 @@ static int udp_gro_complete_segment(struct sk_buff *skb)
 	skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_UDP_L4;
 
-	if (skb->encapsulation)
-		skb->inner_transport_header = skb->transport_header;
-
 	return 0;
 }
 
@@ -905,6 +903,9 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
 		skb->encapsulation = 1;
 		err = udp_sk(sk)->gro_complete(sk, skb,
 				nhoff + sizeof(struct udphdr));
+
+		/* The transport offset points to the inner one, fix it */
+		skb_set_transport_header(skb, nhoff);
 	} else {
 		err = udp_gro_complete_segment(skb);
 	}
