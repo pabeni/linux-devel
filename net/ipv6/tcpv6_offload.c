@@ -27,7 +27,7 @@ static void tcp6_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 	if (likely(!(skb->dev->features & NETIF_F_GRO_FRAGLIST)))
 		return;
 
-	p = tcp_gro_lookup(head, th);
+	p = tcp_gro_lookup(head, th, (unsigned char *)th - skb->data);
 	if (p) {
 		NAPI_GRO_CB(skb)->is_flist = NAPI_GRO_CB(p)->is_flist;
 		return;
@@ -74,7 +74,7 @@ INDIRECT_CALLABLE_SCOPE int tcp6_gro_complete(struct sk_buff *skb, int thoff)
 {
 	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
 	const struct ipv6hdr *iph = (struct ipv6hdr *)(skb->data + offset);
-	struct tcphdr *th = tcp_hdr(skb);
+	struct tcphdr *th = (struct tcphdr *)(skb->data + thoff);
 
 	if (unlikely(NAPI_GRO_CB(skb)->is_flist)) {
 		skb_shinfo(skb)->gso_type |= SKB_GSO_FRAGLIST | SKB_GSO_TCPV6;

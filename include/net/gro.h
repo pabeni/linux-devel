@@ -495,10 +495,9 @@ static inline int __gro_receive_network_flush(const void *th, const void *th2,
 }
 
 static inline int gro_receive_network_flush(const void *th, const void *th2,
-					    struct sk_buff *p)
+					    struct sk_buff *p, int off)
 {
 	const bool encap_mark = NAPI_GRO_CB(p)->encap_mark;
-	int off = skb_transport_offset(p);
 	int flush;
 
 	flush = __gro_receive_network_flush(th, th2, p, off - NAPI_GRO_CB(p)->network_offset, encap_mark);

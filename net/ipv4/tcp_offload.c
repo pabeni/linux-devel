@@ -261,7 +261,8 @@ out:
 	return segs;
 }
 
-struct sk_buff *tcp_gro_lookup(struct list_head *head, struct tcphdr *th)
+struct sk_buff *tcp_gro_lookup(struct list_head *head, struct tcphdr *th,
+			       unsigned int thoff)
 {
 	struct tcphdr *th2;
 	struct sk_buff *p;
@@ -270,7 +271,7 @@ struct sk_buff *tcp_gro_lookup(struct list_head *head, struct tcphdr *th)
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		th2 = tcp_hdr(p);
+		th2 = (struct tcphdr *)(p->data + thoff);
 		if (*(u32 *)&th->source ^ *(u32 *)&th2->source) {
 			NAPI_GRO_CB(p)->same_flow = 0;
 			continue;
@@ -312,6 +313,7 @@ struct tcphdr *tcp_gro_pull_header(struct sk_buff *skb)
 struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 				struct tcphdr *th)
 {
+	unsigned int thoff = (unsigned char *)th - skb->data;
 	unsigned int thlen = th->doff * 4;
 	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
@@ -325,11 +327,11 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	len = skb_gro_len(skb);
 	flags = tcp_flag_word(th);
 
-	p = tcp_gro_lookup(head, th);
+	p = tcp_gro_lookup(head, th, thoff);
 	if (!p)
 		goto out_check_final;
 
-	th2 = tcp_hdr(p);
+	th2 = (struct tcphdr *)(p->data + thoff);
 	flush = (__force int)(flags & TCP_FLAG_CWR);
 	flush |= (__force int)((flags ^ tcp_flag_word(th2)) &
 		  ~(TCP_FLAG_FIN | TCP_FLAG_PSH));
@@ -338,7 +340,7 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 		flush |= *(u32 *)((u8 *)th + i) ^
 			 *(u32 *)((u8 *)th2 + i);
 
-	flush |= gro_receive_network_flush(th, th2, p);
+	flush |= gro_receive_network_flush(th, th2, p, thoff);
 
 	mss = skb_shinfo(p)->gso_size;
 
@@ -424,7 +426,7 @@ static void tcp4_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 	if (likely(!(skb->dev->features & NETIF_F_GRO_FRAGLIST)))
 		return;
 
-	p = tcp_gro_lookup(head, th);
+	p = tcp_gro_lookup(head, th, (unsigned char *)th - skb->data);
 	if (p) {
 		NAPI_GRO_CB(skb)->is_flist = NAPI_GRO_CB(p)->is_flist;
 		return;
@@ -470,7 +472,7 @@ INDIRECT_CALLABLE_SCOPE int tcp4_gro_complete(struct sk_buff *skb, int thoff)
 {
 	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
 	const struct iphdr *iph = (struct iphdr *)(skb->data + offset);
-	struct tcphdr *th = tcp_hdr(skb);
+	struct tcphdr *th = (struct tcphdr *)(skb->data + thoff);
 
 	if (unlikely(NAPI_GRO_CB(skb)->is_flist)) {
 		skb_shinfo(skb)->gso_type |= SKB_GSO_FRAGLIST | SKB_GSO_TCPV4;

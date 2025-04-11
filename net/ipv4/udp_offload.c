@@ -659,6 +659,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 	struct udphdr *uh2;
 	struct sk_buff *p;
 	unsigned int ulen;
+	unsigned int uoff;
 	int ret = 0;
 	int flush;
 
@@ -674,6 +675,8 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 		NAPI_GRO_CB(skb)->flush = 1;
 		return NULL;
 	}
+	uoff = NAPI_GRO_CB(skb)->data_offset;
+
 	/* pull encapsulating udp header */
 	skb_gro_pull(skb, sizeof(struct udphdr));
 
@@ -694,7 +697,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 			return p;
 		}
 
-		flush = gro_receive_network_flush(uh, uh2, p);
+		flush = gro_receive_network_flush(uh, uh2, p, uoff);
 
 		/* Terminate the flow on len mismatch or if it grow "too much".
 		 * Under small packet flood GRO count could elsewhere grow a lot
