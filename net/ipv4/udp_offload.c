@@ -684,7 +684,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		uh2 = udp_hdr(p);
+		uh2 = (struct udphdr *)(p->data + uoff);
 
 		/* Match ports only, as csum is always non zero */
 		if ((*(u32 *)&uh->source != *(u32 *)&uh2->source)) {
