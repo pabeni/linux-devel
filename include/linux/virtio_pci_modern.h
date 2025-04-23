@@ -95,10 +95,16 @@ static inline void vp_iowrite64_twopart(u64 val,
 	vp_iowrite32(val >> 32, hi);
 }
 
+struct virtio_features;
+
 u64 vp_modern_get_features(struct virtio_pci_modern_device *mdev);
+void vp_modern_get_features_ex(struct virtio_pci_modern_device *mdev,
+			       struct virtio_features *features);
 u64 vp_modern_get_driver_features(struct virtio_pci_modern_device *mdev);
 void vp_modern_set_features(struct virtio_pci_modern_device *mdev,
 		     u64 features);
+void vp_modern_set_features_ex(struct virtio_pci_modern_device *mdev,
+		     const struct virtio_features *features);
 u32 vp_modern_generation(struct virtio_pci_modern_device *mdev);
 u8 vp_modern_get_status(struct virtio_pci_modern_device *mdev);
 void vp_modern_set_status(struct virtio_pci_modern_device *mdev,

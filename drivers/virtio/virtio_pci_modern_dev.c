@@ -4,6 +4,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
+#include <linux/virtio.h>
 
 /*
  * vp_modern_map_capability - map a part of virtio pci capability
@@ -409,6 +410,30 @@ u64 vp_modern_get_features(struct virtio_pci_modern_device *mdev)
 EXPORT_SYMBOL_GPL(vp_modern_get_features);
 
 /*
+ * vp_modern_get_features_ex - get features from device, using the
+ * full virtio feature space
+ * @mdev: the modern virtio-pci device
+ *
+ * Returns the features read from the device
+ */
+void vp_modern_get_features_ex(struct virtio_pci_modern_device *mdev,
+			       struct virtio_features *features)
+{
+	struct virtio_pci_common_cfg __iomem *cfg = mdev->common;
+	u64 features64;
+	int i;
+
+	for (i = 0; i < VIRTIO_FEATURES_SIZE; i++) {
+		vp_iowrite32(i * 2, &cfg->device_feature_select);
+		features64 = vp_ioread32(&cfg->device_feature);
+		vp_iowrite32(i * 2 + 1, &cfg->device_feature_select);
+		features64 |= ((u64)vp_ioread32(&cfg->device_feature) << 32);
+		virtio_features_from_u64(features, i, features64);
+	}
+}
+EXPORT_SYMBOL_GPL(vp_modern_get_features_ex);
+
+/*
  * vp_modern_get_driver_features - get driver features from device
  * @mdev: the modern virtio-pci device
  *
@@ -446,6 +471,28 @@ void vp_modern_set_features(struct virtio_pci_modern_device *mdev,
 }
 EXPORT_SYMBOL_GPL(vp_modern_set_features);
 
+/*
+ * vp_modern_set_features_ex - set features to device, using
+ * the full virtio features space
+ * @mdev: the modern virtio-pci device
+ * @features: the features set to device
+ */
+void vp_modern_set_features_ex(struct virtio_pci_modern_device *mdev,
+			       const struct virtio_features *features)
+{
+	struct virtio_pci_common_cfg __iomem *cfg = mdev->common;
+	u64 features64;
+	int i;
+
+	for (i = 0; i < VIRTIO_FEATURES_SIZE; i++) {
+		features64 = virtio_features_to_u64(features, i);
+		vp_iowrite32(2 * i, &cfg->guest_feature_select);
+		vp_iowrite32(features64, &cfg->guest_feature);
+		vp_iowrite32(2 * i + 1, &cfg->guest_feature_select);
+		vp_iowrite32(features64 >> 32, &cfg->guest_feature);
+	}
+}
+EXPORT_SYMBOL_GPL(vp_modern_set_features_ex);
 /*
  * vp_modern_generation - get the device genreation
  * @mdev: the modern virtio-pci device

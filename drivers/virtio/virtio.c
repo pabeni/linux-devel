@@ -270,10 +270,14 @@ EXPORT_SYMBOL_GPL(virtio_reset_device);
 void virtio_device_get_features(struct virtio_device *dev,
 				struct virtio_features *device_features)
 {
-	u64 features = dev->config->get_features(dev);
+	if (dev->config->get_features_ex) {
+		dev->config->get_features_ex(dev, device_features);
+	} else {
+		u64 features = dev->config->get_features(dev);
 
-	virtio_features_zero(device_features);
-	virtio_features_from_u64(device_features, 0, features);
+		virtio_features_zero(device_features);
+		virtio_features_from_u64(device_features, 0, features);
+	}
 }
 EXPORT_SYMBOL_GPL(virtio_device_get_features);
 
