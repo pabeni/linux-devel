@@ -65,12 +65,7 @@ static const unsigned long guest_offloads[] = {
 	VIRTIO_NET_F_GUEST_HDRLEN
 };
 
-#define GUEST_OFFLOAD_GRO_HW_MASK ((1ULL << VIRTIO_NET_F_GUEST_TSO4) | \
-				(1ULL << VIRTIO_NET_F_GUEST_TSO6) | \
-				(1ULL << VIRTIO_NET_F_GUEST_ECN)  | \
-				(1ULL << VIRTIO_NET_F_GUEST_UFO)  | \
-				(1ULL << VIRTIO_NET_F_GUEST_USO4) | \
-				(1ULL << VIRTIO_NET_F_GUEST_USO6))
+static struct virtio_features guest_offload_gro_hw_mask __ro_after_init;
 
 struct virtnet_stat_desc {
 	char desc[ETH_GSTRING_LEN];
@@ -458,8 +453,8 @@ struct virtnet_info {
 	struct virtnet_interrupt_coalesce intr_coal_tx;
 	struct virtnet_interrupt_coalesce intr_coal_rx;
 
-	unsigned long guest_offloads;
-	unsigned long guest_offloads_capable;
+	struct virtio_features guest_offloads;
+	struct virtio_features guest_offloads_capable;
 
 	/* failover when STANDBY feature enabled */
 	struct failover *failover;
@@ -5683,16 +5678,25 @@ static int virtnet_restore_up(struct virtio_device *vdev)
 	return err;
 }
 
-static int virtnet_set_guest_offloads(struct virtnet_info *vi, u64 offloads)
+static int virtnet_set_guest_offloads(struct virtnet_info *vi,
+				      const struct virtio_features *offloads)
 {
 	__virtio64 *_offloads __free(kfree) = NULL;
+	struct virtio_features offloads64;
 	struct scatterlist sg;
+
+	virtio_features_zero(&offloads64);
+	virtio_features_from_u64(&offloads64, 0,
+				 virtio_features_to_u64(offloads, 0));
+	if (!virtio_features_equal(offloads, &offloads64))
+		return -EINVAL;
 
 	_offloads = kzalloc(sizeof(*_offloads), GFP_KERNEL);
 	if (!_offloads)
 		return -ENOMEM;
 
-	*_offloads = cpu_to_virtio64(vi->vdev, offloads);
+	*_offloads = cpu_to_virtio64(vi->vdev,
+				     virtio_features_to_u64(offloads, 0));
 
 	sg_init_one(&sg, _offloads, sizeof(*_offloads));
 
@@ -5707,22 +5711,24 @@ static int virtnet_set_guest_offloads(struct virtnet_info *vi, u64 offloads)
 
 static int virtnet_clear_guest_offloads(struct virtnet_info *vi)
 {
-	u64 offloads = 0;
+	struct virtio_features zero;
 
-	if (!vi->guest_offloads)
+	virtio_features_zero(&zero);
+	if (virtio_features_equal(&vi->guest_offloads, &zero))
 		return 0;
 
-	return virtnet_set_guest_offloads(vi, offloads);
+	return virtnet_set_guest_offloads(vi, &zero);
 }
 
 static int virtnet_restore_guest_offloads(struct virtnet_info *vi)
 {
-	u64 offloads = vi->guest_offloads;
+	struct virtio_features zero;
 
-	if (!vi->guest_offloads)
+	virtio_features_zero(&zero);
+	if (virtio_features_equal(&vi->guest_offloads, &zero))
 		return 0;
 
-	return virtnet_set_guest_offloads(vi, offloads);
+	return virtnet_set_guest_offloads(vi, &vi->guest_offloads);
 }
 
 static int virtnet_rq_bind_xsk_pool(struct virtnet_info *vi, struct receive_queue *rq,
@@ -6057,7 +6063,7 @@ static int virtnet_set_features(struct net_device *dev,
 				netdev_features_t features)
 {
 	struct virtnet_info *vi = netdev_priv(dev);
-	u64 offloads;
+	struct virtio_features offloads;
 	int err;
 
 	if ((dev->features ^ features) & NETIF_F_GRO_HW) {
@@ -6067,10 +6073,11 @@ static int virtnet_set_features(struct net_device *dev,
 		if (features & NETIF_F_GRO_HW)
 			offloads = vi->guest_offloads_capable;
 		else
-			offloads = vi->guest_offloads_capable &
-				   ~GUEST_OFFLOAD_GRO_HW_MASK;
+			virtio_features_andnot(&offloads,
+					       &vi->guest_offloads_capable,
+					       &guest_offload_gro_hw_mask);
 
-		err = virtnet_set_guest_offloads(vi, offloads);
+		err = virtnet_set_guest_offloads(vi, &offloads);
 		if (err)
 			return err;
 		vi->guest_offloads = offloads;
@@ -6981,7 +6988,8 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	for (i = 0; i < ARRAY_SIZE(guest_offloads); i++)
 		if (virtio_has_feature(vi->vdev, guest_offloads[i]))
-			set_bit(guest_offloads[i], &vi->guest_offloads);
+			virtio_features_set_bit(&vi->guest_offloads,
+						guest_offloads[i]);
 	vi->guest_offloads_capable = vi->guest_offloads;
 
 	rtnl_unlock();
@@ -7136,9 +7144,20 @@ static struct virtio_driver virtio_net_driver = {
 #endif
 };
 
+#define SET_GRO_HW_MASK(feat) \
+	virtio_features_set_bit(&guest_offload_gro_hw_mask, VIRTIO_NET_F_##feat)
+
 static __init int virtio_net_driver_init(void)
 {
 	int ret;
+
+	virtio_features_zero(&guest_offload_gro_hw_mask);
+	SET_GRO_HW_MASK(GUEST_TSO4);
+	SET_GRO_HW_MASK(GUEST_TSO6);
+	SET_GRO_HW_MASK(GUEST_ECN);
+	SET_GRO_HW_MASK(GUEST_UFO);
+	SET_GRO_HW_MASK(GUEST_USO4);
+	SET_GRO_HW_MASK(GUEST_USO6);
 
 	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, "virtio/net:online",
 				      virtnet_cpu_online,
