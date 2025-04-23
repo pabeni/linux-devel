@@ -267,52 +267,61 @@ void virtio_reset_device(struct virtio_device *dev)
 }
 EXPORT_SYMBOL_GPL(virtio_reset_device);
 
+void virtio_device_get_features(struct virtio_device *dev,
+				struct virtio_features *device_features)
+{
+	u64 features = dev->config->get_features(dev);
+
+	virtio_features_zero(device_features);
+	virtio_features_from_u64(device_features, 0, features);
+}
+EXPORT_SYMBOL_GPL(virtio_device_get_features);
+
 static int virtio_dev_probe(struct device *_d)
 {
 	int err, i;
 	struct virtio_device *dev = dev_to_virtio(_d);
 	struct virtio_driver *drv = drv_to_virtio(dev->dev.driver);
-	u64 device_features;
-	u64 driver_features;
-	u64 driver_features_legacy;
+	struct virtio_features driver_features_legacy;
+	struct virtio_features device_features;
+	struct virtio_features driver_features;
 
 	/* We have a driver! */
 	virtio_add_status(dev, VIRTIO_CONFIG_S_DRIVER);
 
 	/* Figure out what features the device supports. */
-	device_features = dev->config->get_features(dev);
+	virtio_device_get_features(dev, &device_features);
 
 	/* Figure out what features the driver supports. */
-	driver_features = 0;
+	virtio_features_zero(&driver_features);
 	for (i = 0; i < drv->feature_table_size; i++) {
 		unsigned int f = drv->feature_table[i];
-		BUG_ON(f >= 64);
-		driver_features |= (1ULL << f);
+		virtio_features_set_bit(&driver_features, f);
 	}
 
 	/* Some drivers have a separate feature table for virtio v1.0 */
 	if (drv->feature_table_legacy) {
-		driver_features_legacy = 0;
+		virtio_features_zero(&driver_features_legacy);
 		for (i = 0; i < drv->feature_table_size_legacy; i++) {
 			unsigned int f = drv->feature_table_legacy[i];
 			BUG_ON(f >= 64);
-			driver_features_legacy |= (1ULL << f);
+			virtio_features_set_bit(&driver_features_legacy, f);
 		}
 	} else {
 		driver_features_legacy = driver_features;
 	}
 
-	if (device_features & (1ULL << VIRTIO_F_VERSION_1))
-		dev->features = driver_features & device_features;
+	if (virtio_features_test_bit(&device_features, VIRTIO_F_VERSION_1))
+		virtio_features_and(&dev->features, &driver_features, &device_features);
 	else
-		dev->features = driver_features_legacy & device_features;
+		virtio_features_and(&dev->features, &driver_features_legacy, &device_features);
 
 	/* When debugging, user may filter some features by hand. */
 	virtio_debug_device_filter_features(dev);
 
 	/* Transport features always preserved to pass to finalize_features. */
 	for (i = VIRTIO_TRANSPORT_F_START; i < VIRTIO_TRANSPORT_F_END; i++)
-		if (device_features & (1ULL << i))
+		if (virtio_features_test_bit(&device_features, i))
 			__virtio_set_bit(dev, i);
 
 	err = dev->config->finalize_features(dev);
@@ -320,14 +329,14 @@ static int virtio_dev_probe(struct device *_d)
 		goto err;
 
 	if (drv->validate) {
-		u64 features = dev->features;
+		struct virtio_features features = dev->features;
 
 		err = drv->validate(dev);
 		if (err)
 			goto err;
 
 		/* Did validation change any features? Then write them again. */
-		if (features != dev->features) {
+		if (!virtio_features_equal(&features, &dev->features)) {
 			err = dev->config->finalize_features(dev);
 			if (err)
 				goto err;

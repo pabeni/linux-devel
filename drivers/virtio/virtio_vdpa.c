@@ -424,7 +424,8 @@ static int virtio_vdpa_finalize_features(struct virtio_device *vdev)
 	/* Give virtio_ring a chance to accept features. */
 	vring_transport_features(vdev);
 
-	return vdpa_set_features(vdpa, vdev->features);
+	return vdpa_set_features(vdpa,
+				 virtio_features_to_u64(&vdev->features, 0));
 }
 
 static const char *virtio_vdpa_bus_name(struct virtio_device *vdev)

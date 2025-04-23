@@ -147,13 +147,8 @@ void virtio_check_driver_offered_feature(const struct virtio_device *vdev,
 static inline bool __virtio_test_bit(const struct virtio_device *vdev,
 				     unsigned int fbit)
 {
-	/* Did you forget to fix assumptions on max features? */
-	if (__builtin_constant_p(fbit))
-		BUILD_BUG_ON(fbit >= 64);
-	else
-		BUG_ON(fbit >= 64);
 
-	return vdev->features & BIT_ULL(fbit);
+	return virtio_features_test_bit(&vdev->features, fbit);
 }
 
 /**
@@ -164,13 +159,7 @@ static inline bool __virtio_test_bit(const struct virtio_device *vdev,
 static inline void __virtio_set_bit(struct virtio_device *vdev,
 				    unsigned int fbit)
 {
-	/* Did you forget to fix assumptions on max features? */
-	if (__builtin_constant_p(fbit))
-		BUILD_BUG_ON(fbit >= 64);
-	else
-		BUG_ON(fbit >= 64);
-
-	vdev->features |= BIT_ULL(fbit);
+	virtio_features_set_bit(&vdev->features, fbit);
 }
 
 /**
@@ -181,13 +170,7 @@ static inline void __virtio_set_bit(struct virtio_device *vdev,
 static inline void __virtio_clear_bit(struct virtio_device *vdev,
 				      unsigned int fbit)
 {
-	/* Did you forget to fix assumptions on max features? */
-	if (__builtin_constant_p(fbit))
-		BUILD_BUG_ON(fbit >= 64);
-	else
-		BUG_ON(fbit >= 64);
-
-	vdev->features &= ~BIT_ULL(fbit);
+	virtio_features_clear_bit(&vdev->features, fbit);
 }
 
 /**

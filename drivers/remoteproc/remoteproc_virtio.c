@@ -266,7 +266,9 @@ static void rproc_transport_features(struct virtio_device *vdev)
 static int rproc_virtio_finalize_features(struct virtio_device *vdev)
 {
 	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	struct virtio_features features;
 	struct fw_rsc_vdev *rsc;
+	u32 features32;
 
 	rsc = (void *)rvdev->rproc->table_ptr + rvdev->rsc_offset;
 
@@ -277,13 +279,15 @@ static int rproc_virtio_finalize_features(struct virtio_device *vdev)
 	rproc_transport_features(vdev);
 
 	/* Make sure we don't have any features > 32 bits! */
-	BUG_ON((u32)vdev->features != vdev->features);
+	features32 = virtio_features_to_u64(&vdev->features, 0);
+	virtio_features_from_u64(&features, 0, features32);
+	BUG_ON(!virtio_features_equal(&features, &vdev->features));
 
 	/*
 	 * Remember the finalized features of our vdev, and provide it
 	 * to the remote processor once it is powered on.
 	 */
-	rsc->gfeatures = vdev->features;
+	rsc->gfeatures = features32;
 
 	return 0;
 }

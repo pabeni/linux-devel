@@ -31,15 +31,19 @@ static u64 vp_get_features(struct virtio_device *vdev)
 static int vp_finalize_features(struct virtio_device *vdev)
 {
 	struct virtio_pci_device *vp_dev = to_vp_device(vdev);
+	struct virtio_features features;
+	u32 features32;
 
 	/* Give virtio_ring a chance to accept features. */
 	vring_transport_features(vdev);
 
 	/* Make sure we don't have any features > 32 bits! */
-	BUG_ON((u32)vdev->features != vdev->features);
+	features32 = virtio_features_to_u64(&vdev->features, 0);
+	virtio_features_from_u64(&features, 0, features32);
+	BUG_ON(!virtio_features_equal(&features, &vdev->features));
 
 	/* We only support 32 feature bits. */
-	vp_legacy_set_features(&vp_dev->ldev, vdev->features);
+	vp_legacy_set_features(&vp_dev->ldev, features32);
 
 	return 0;
 }

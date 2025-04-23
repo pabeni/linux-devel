@@ -124,6 +124,7 @@ static u64 vm_get_features(struct virtio_device *vdev)
 static int vm_finalize_features(struct virtio_device *vdev)
 {
 	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
+	u64 features;
 
 	/* Give virtio_ring a chance to accept features. */
 	vring_transport_features(vdev);
@@ -135,12 +136,13 @@ static int vm_finalize_features(struct virtio_device *vdev)
 		return -EINVAL;
 	}
 
+	features = virtio_features_to_u64(&vdev->features, 0);
 	writel(1, vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
-	writel((u32)(vdev->features >> 32),
+	writel((u32)(features >> 32),
 			vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES);
 
 	writel(0, vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
-	writel((u32)vdev->features,
+	writel((u32)features,
 			vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES);
 
 	return 0;

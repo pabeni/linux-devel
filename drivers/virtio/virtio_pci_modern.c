@@ -408,8 +408,8 @@ static int vp_check_common_size(struct virtio_device *vdev)
 /* virtio config->finalize_features() implementation */
 static int vp_finalize_features(struct virtio_device *vdev)
 {
+	u64 features = virtio_features_to_u64(&vdev->features, 0);
 	struct virtio_pci_device *vp_dev = to_vp_device(vdev);
-	u64 features = vdev->features;
 
 	/* Give virtio_ring a chance to accept features. */
 	vring_transport_features(vdev);
@@ -426,7 +426,8 @@ static int vp_finalize_features(struct virtio_device *vdev)
 	if (vp_check_common_size(vdev))
 		return -EINVAL;
 
-	vp_modern_set_features(&vp_dev->mdev, vdev->features);
+	vp_modern_set_features(&vp_dev->mdev,
+			       virtio_features_to_u64(&vdev->features, 0));
 
 	return 0;
 }
