@@ -65,12 +65,16 @@ static const unsigned long guest_offloads[] = {
 	VIRTIO_NET_F_GUEST_HDRLEN
 };
 
-#define GUEST_OFFLOAD_GRO_HW_MASK ((1ULL << VIRTIO_NET_F_GUEST_TSO4) | \
+/* GCC don't support 128 constant, we have to delay (part of) the
+ * initialization at __init time
+ */
+static virtio_features_t GUEST_OFFLOAD_GRO_HW_MASK __ro_after_init = \
+				((1ULL << VIRTIO_NET_F_GUEST_TSO4) | \
 				(1ULL << VIRTIO_NET_F_GUEST_TSO6) | \
 				(1ULL << VIRTIO_NET_F_GUEST_ECN)  | \
 				(1ULL << VIRTIO_NET_F_GUEST_UFO)  | \
 				(1ULL << VIRTIO_NET_F_GUEST_USO4) | \
-				(1ULL << VIRTIO_NET_F_GUEST_USO6))
+				(1ULL << VIRTIO_NET_F_GUEST_USO6));
 
 struct virtnet_stat_desc {
 	char desc[ETH_GSTRING_LEN];
@@ -458,8 +462,8 @@ struct virtnet_info {
 	struct virtnet_interrupt_coalesce intr_coal_tx;
 	struct virtnet_interrupt_coalesce intr_coal_rx;
 
-	unsigned long guest_offloads;
-	unsigned long guest_offloads_capable;
+	virtio_features_t guest_offloads;
+	virtio_features_t guest_offloads_capable;
 
 	/* failover when STANDBY feature enabled */
 	struct failover *failover;
@@ -6115,7 +6119,7 @@ static int virtnet_set_features(struct net_device *dev,
 				netdev_features_t features)
 {
 	struct virtnet_info *vi = netdev_priv(dev);
-	u64 offloads;
+	virtio_features_t offloads;
 	int err;
 
 	if ((dev->features ^ features) & NETIF_F_GRO_HW) {
@@ -7039,7 +7043,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	for (i = 0; i < ARRAY_SIZE(guest_offloads); i++)
 		if (virtio_has_feature(vi->vdev, guest_offloads[i]))
-			set_bit(guest_offloads[i], &vi->guest_offloads);
+			vi->guest_offloads |= VIRTIO_BIT(guest_offloads[i]);
 	vi->guest_offloads_capable = vi->guest_offloads;
 
 	rtnl_unlock();
