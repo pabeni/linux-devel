@@ -35,6 +35,27 @@ module_param(csum, bool, 0444);
 module_param(gso, bool, 0444);
 module_param(napi_tx, bool, 0644);
 
+#define VIRTIO_RESERVED_MIN	42
+#define VIRTIO_RESERVED_MAX	49
+#define VIRTIO_O2F_DELTA	(64 - VIRTIO_RESERVED_MIN)
+
+static bool virtio_is_mapped_offload(unsigned int obit)
+{
+	return obit >= VIRTIO_RESERVED_MIN && obit <= VIRTIO_RESERVED_MAX;
+}
+
+#define VIRTIO_FEATURE_TO_OFFLOAD(fbit)	\
+	({								\
+		unsigned int __f = fbit;				\
+		__f >= 64 ? __f - VIRTIO_O2F_DELTA : __f;		\
+	})
+#define VIRTIO_OFFLOAD_TO_FEATURE(obit)	\
+	({								\
+		unsigned int __o = obit;				\
+		virtio_is_mapped_offload(__o) ? __o + VIRTIO_O2F_DELTA :\
+						__o;			\
+	})
+
 /* FIXME: MTU in config. */
 #define GOOD_PACKET_LEN (ETH_HLEN + VLAN_HLEN + ETH_DATA_LEN)
 #define GOOD_COPY_LEN	128
@@ -7037,9 +7058,13 @@ static int virtnet_probe(struct virtio_device *vdev)
 		netif_carrier_on(dev);
 	}
 
-	for (i = 0; i < ARRAY_SIZE(guest_offloads); i++)
-		if (virtio_has_feature(vi->vdev, guest_offloads[i]))
+	for (i = 0; i < ARRAY_SIZE(guest_offloads); i++) {
+		unsigned int fbit;
+
+		fbit = VIRTIO_OFFLOAD_TO_FEATURE(guest_offloads[i]);
+		if (virtio_has_feature(vi->vdev, fbit))
 			set_bit(guest_offloads[i], &vi->guest_offloads);
+	}
 	vi->guest_offloads_capable = vi->guest_offloads;
 
 	rtnl_unlock();
