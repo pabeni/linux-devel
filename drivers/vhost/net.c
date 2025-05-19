@@ -1626,6 +1626,15 @@ static int vhost_net_set_features(struct vhost_net *n, const u64 *features)
 		  sizeof(struct virtio_net_hdr_mrg_rxbuf) :
 		  sizeof(struct virtio_net_hdr);
 
+	pr_err("vhost_net_set_features %016llx:%016llx tunnel %d hdr %d ap %d\n",
+		features[0], features[1], virtio_features_test_bit(features,
+				     VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO) ||
+		virtio_features_test_bit(features,
+				     VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO),
+		virtio_features_test_bit(features, VHOST_NET_F_VIRTIO_NET_HDR),
+		virtio_features_test_bit(features, VIRTIO_F_ACCESS_PLATFORM)
+		);
+
 	if (virtio_features_test_bit(features,
 				     VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO) ||
 	    virtio_features_test_bit(features,
@@ -1643,12 +1652,16 @@ static int vhost_net_set_features(struct vhost_net *n, const u64 *features)
 	}
 	mutex_lock(&n->dev.mutex);
 	if (virtio_features_test_bit(features, VHOST_F_LOG_ALL) &&
-	    !vhost_log_access_ok(&n->dev))
+	    !vhost_log_access_ok(&n->dev)) {
+		pr_err(" bad access log\n");
 		goto out_unlock;
+	}
 
 	if (virtio_features_test_bit(features, VIRTIO_F_ACCESS_PLATFORM)) {
-		if (vhost_init_device_iotlb(&n->dev))
+		if (vhost_init_device_iotlb(&n->dev)) {
+			pr_err(" can't init iotlb\n");
 			goto out_unlock;
+		}
 	}
 
 	for (i = 0; i < VHOST_NET_VQ_MAX; ++i) {
@@ -1706,24 +1719,33 @@ static long vhost_net_ioctl(struct file *f, unsigned int ioctl,
 		return vhost_net_set_backend(n, backend.index, backend.fd);
 	case VHOST_GET_FEATURES:
 		features = vhost_net_features[0];
+		pr_err("vhost_net_ioctl: VHOST_GET_FEATURES features %llx\n", features);
 		if (copy_to_user(featurep, &features, sizeof features))
 			return -EFAULT;
 		return 0;
 	case VHOST_SET_FEATURES:
 		if (copy_from_user(&features, featurep, sizeof features))
 			return -EFAULT;
+		pr_err("vhost_net_ioctl: VHOST_SET_FEATURES features %llx supported %llx unsupported %llx\n",
+			features, vhost_net_features[0], features & ~vhost_net_features[0]);
 		if (features & ~vhost_net_features[0])
 			return -EOPNOTSUPP;
 
 		virtio_features_from_u64(all_features, features);
 		return vhost_net_set_features(n, all_features);
 	case VHOST_GET_FEATURES_ARRAY:
-		if (copy_from_user(&count, argp, sizeof(u64)))
+		if (copy_from_user(&count, argp, sizeof(u64))) {
+			pr_err("vhost_net_ioctl: can't fetch count\n");
 			return -EFAULT;
+		}
 
 		/* Copy the net features, up to the user-provided buffer size */
 		argp += sizeof(u64);
 		copied = min(count, VIRTIO_FEATURES_DWORDS);
+		pr_err("vhost_net_ioctl: count %lld copied %lld\n", count, copied);
+		for (i = 0; i < copied; i++)
+			pr_err(" id %d features %016llx\n", i, vhost_net_features[i]);
+
 		if (copy_to_user(argp, vhost_net_features,
 				 copied * sizeof(u64)))
 			return -EFAULT;
@@ -1733,15 +1755,20 @@ static long vhost_net_ioctl(struct file *f, unsigned int ioctl,
 			return -EFAULT;
 		return 0;
 	case VHOST_SET_FEATURES_ARRAY:
-		if (copy_from_user(&count, argp, sizeof(u64)))
+		if (copy_from_user(&count, argp, sizeof(u64))) {
+			pr_err("vhost_net_ioctl: can't fetch count\n");
 			return -EFAULT;
+		}
 
 		virtio_features_zero(all_features);
+		pr_err("vhost_net_ioctl: count %lld\n", count);
 		for (i = 0; i < min(count, VIRTIO_FEATURES_DWORDS); ++i) {
 			argp += sizeof(u64);
 			if (copy_from_user(&all_features[i], argp,
 					   sizeof(u64)))
 				return -EFAULT;
+
+			pr_err(" id %d features %016llx\n", i, all_features[i]);
 		}
 
 		/* Any feature specified by user-space above VIRTIO_FEATURES_MAX is

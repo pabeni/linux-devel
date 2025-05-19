@@ -1691,6 +1691,22 @@ out:
 	return NULL;
 }
 
+static void pr_tun_err(struct sk_buff *skb, struct virtio_net_hdr *gso, unsigned int flags)
+{
+	int inner_l3min = 20;
+	int outer_l3min = ETH_HLEN + 20;
+	bool little_endian = tun_vnet_is_little_endian(flags);
+	struct virtio_net_hdr_v1_hash_tunnel *tnl = (void *)gso;
+	int inner_th = __virtio16_to_cpu(little_endian, gso->csum_start);
+	int inner_nh = __virtio16_to_cpu(little_endian, tnl->inner_nh_offset);
+	int outer_th = __virtio16_to_cpu(little_endian, tnl->outer_th_offset);
+
+	pr_err("tun_get_user len %d gso_type %x flags %x tun fl %x oth %d:%d inh %d:%ld ith %d:%d\n",
+		skb->len, gso->gso_type, gso->flags, flags, outer_th, outer_l3min,
+		inner_nh, outer_th + sizeof(struct udphdr),
+		inner_th, inner_nh + inner_l3min);
+}
+
 /* Get packet from user space buffer */
 static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 			    void *msg_control, struct iov_iter *from,
@@ -1817,6 +1833,7 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 	}
 
 	if (tun_vnet_hdr_tnl_to_skb(tun->flags, features, skb, &hdr)) {
+		pr_tun_err(skb, gso, flags);
 		atomic_long_inc(&tun->rx_frame_errors);
 		err = -EINVAL;
 		goto free_skb;
@@ -2464,6 +2481,7 @@ build:
 
 	tnl_hdr = (struct virtio_net_hdr_v1_hash_tunnel *)gso;
 	if (tun_vnet_hdr_tnl_to_skb(tun->flags, features, skb, tnl_hdr)) {
+		pr_tun_err(skb, gso, flags);
 		atomic_long_inc(&tun->rx_frame_errors);
 		kfree_skb(skb);
 		ret = -EINVAL;
