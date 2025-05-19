@@ -6171,6 +6171,10 @@ static int virtnet_set_features(struct net_device *dev,
 			offloads = vi->guest_offloads_capable &
 				   ~GUEST_OFFLOAD_GRO_HW_MASK;
 
+		pr_err("guest_offloads_capable %lx mask %llx hw %d offloads %llx\n",
+			vi->guest_offloads_capable, GUEST_OFFLOAD_GRO_HW_MASK,
+			!!(features & NETIF_F_GRO_HW), offloads);
+
 		err = virtnet_set_guest_offloads(vi, offloads);
 		if (err)
 			return err;
@@ -7104,10 +7108,14 @@ static int virtnet_probe(struct virtio_device *vdev)
 		unsigned int fbit;
 
 		fbit = VIRTIO_OFFLOAD_TO_FEATURE(guest_offloads[i]);
+		pr_err(" guest_offload %ld fbit %d has feature %d\n",
+			guest_offloads[i], fbit, virtio_has_feature(vi->vdev, fbit));
 		if (virtio_has_feature(vi->vdev, fbit))
 			set_bit(guest_offloads[i], &vi->guest_offloads);
 	}
 	vi->guest_offloads_capable = vi->guest_offloads;
+	pr_err("virtnet_probe guest_offloads_capable %lx\n",
+		vi->guest_offloads_capable);
 
 	rtnl_unlock();
 
