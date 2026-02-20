@@ -267,7 +267,7 @@ static struct sk_buff *fou_gro_receive(struct sock *sk,
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	pp = call_gro_receive(ops->callbacks.gro_receive, head, skb);
+	pp = call_net_gro_receive(ops->callbacks.gro_receive, head, skb);
 
 out:
 	return pp;
@@ -456,7 +456,7 @@ next_proto:
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	pp = call_gro_receive(ops->callbacks.gro_receive, head, skb);
+	pp = call_net_gro_receive(ops->callbacks.gro_receive, head, skb);
 	flush = 0;
 
 out:

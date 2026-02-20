@@ -25,7 +25,6 @@
 #if IS_ENABLED(CONFIG_IPV6)
 #include <linux/ipv6.h>
 #endif
-#include <linux/netdevice.h>
 
 /* This is one larger than the largest protocol value that can be
  * found in an ipv4 or ipv6 header.  Since in both cases the protocol
@@ -67,10 +66,18 @@ struct inet6_protocol {
 #define INET6_PROTO_FINAL	0x2
 #endif
 
+struct net_offload_callbacks {
+	struct sk_buff		*(*gso_segment)(struct sk_buff *skb,
+						netdev_features_t features);
+	struct sk_buff		*(*gro_receive)(struct list_head *head,
+						struct sk_buff *skb);
+	int			(*gro_complete)(struct sk_buff *skb, int nhoff);
+};
+
 struct net_offload {
-	struct offload_callbacks callbacks;
-	unsigned int		 flags;	/* Flags used by IPv6 for now */
-	u32			 secret;
+	struct net_offload_callbacks	callbacks;
+	unsigned int		 	flags;	/* Flags used by IPv6 for now */
+	u32			 	secret;
 };
 /* This should be set for any extension header which is compatible with GSO. */
 #define INET6_PROTO_GSO_EXTHDR	0x1
