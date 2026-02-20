@@ -28,14 +28,19 @@
 #include <net/udp.h>
 
 static int esp4_gro_receive(struct list_head *head,
-			    struct sk_buff *skb, int off, int nh)
+			    struct sk_buff *skb, int offset, int nh)
 {
-	int offset = skb_gro_offset(skb);
 	struct xfrm_offload *xo;
 	struct xfrm_state *x;
 	int encap_type = 0;
 	__be32 seq;
 	__be32 spi;
+
+	/* The GRO layer don't touch the l3/l4 offset, init them for
+	 * later xfrm code's sake.
+	 */
+	skb_set_network_header(skb, nh);
+	skb_set_transport_header(skb, offset);
 
 	if (!pskb_pull(skb, offset))
 		return offset;

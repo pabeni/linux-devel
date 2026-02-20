@@ -174,9 +174,8 @@ int xfrm6_udp_encap_rcv(struct sock *sk, struct sk_buff *skb)
 }
 
 int xfrm6_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
-			    struct sk_buff *skb, int off, int nh)
+			    struct sk_buff *skb, int offset, int nh)
 {
-	int offset = skb_gro_offset(skb);
 	const struct net_offload *ops;
 	int len, dlen;
 	__u8 *udpdata;

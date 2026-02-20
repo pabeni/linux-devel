@@ -51,9 +51,8 @@ static __u16 esp6_nexthdr_esp_offset(struct ipv6hdr *ipv6_hdr, int nhlen)
 }
 
 static int esp6_gro_receive(struct list_head *head,
-			    struct sk_buff *skb, int off, int nh)
+			    struct sk_buff *skb, int offset, int nh)
 {
-	int offset = skb_gro_offset(skb);
 	struct xfrm_offload *xo;
 	struct xfrm_state *x;
 	int encap_type = 0;
@@ -63,6 +62,12 @@ static int esp6_gro_receive(struct list_head *head,
 
 	if (NAPI_GRO_CB(skb)->proto == IPPROTO_UDP)
 		encap_type = UDP_ENCAP_ESPINUDP;
+
+	/* The GRO layer don't touch the l3/l4 offset, init them for
+	 * later xfrm code's sake.
+	 */
+	skb_set_network_header(skb, nh);
+	skb_set_transport_header(skb, offset);
 
 	if (!pskb_pull(skb, offset))
 		return offset;
