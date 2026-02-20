@@ -137,19 +137,18 @@ static inline int call_net_gro_receive(net_gro_receive_t cb,
 	return cb(head, skb, offset, nh);
 }
 
-typedef struct sk_buff *(*gro_receive_sk_t)(struct sock *, struct list_head *,
-					    struct sk_buff *);
-static inline struct sk_buff *call_gro_receive_sk(gro_receive_sk_t cb,
-						  struct sock *sk,
-						  struct list_head *head,
-						  struct sk_buff *skb)
+typedef int (*gro_receive_sk_t)(struct sock *, struct list_head *,
+					    struct sk_buff *, int, int);
+static inline int call_gro_receive_sk(gro_receive_sk_t cb, struct sock *sk,
+				      struct list_head *head,
+				      struct sk_buff *skb, int offset, int nh)
 {
 	if (unlikely(gro_recursion_inc_test(skb))) {
 		NAPI_GRO_CB(skb)->flush |= 1;
-		return NULL;
+		return offset;
 	}
 
-	return cb(sk, head, skb);
+	return cb(sk, head, skb, offset, nh);
 }
 
 static inline unsigned int skb_gro_offset(const struct sk_buff *skb)

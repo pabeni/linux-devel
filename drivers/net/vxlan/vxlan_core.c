@@ -703,25 +703,24 @@ static struct vxlanhdr *vxlan_gro_prepare_receive(struct sock *sk,
 	return vh;
 }
 
-static struct sk_buff *vxlan_gro_receive(struct sock *sk,
-					 struct list_head *head,
-					 struct sk_buff *skb)
+static int vxlan_gro_receive(struct sock *sk, struct list_head *head,
+			     struct sk_buff *skb, int offset, int nh)
 {
 	struct sk_buff *pp = NULL;
 	struct gro_remcsum grc;
 	int flush = 1;
 
 	if (vxlan_gro_prepare_receive(sk, head, skb, &grc)) {
-		call_gro_receive(eth_gro_receive, head, skb, 0);
+		offset = call_gro_receive(eth_gro_receive, head, skb,
+					  offset + sizeof(struct vxlanhdr));
 		flush = 0;
 	}
 	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
-	return pp;
+	return offset;
 }
 
-static struct sk_buff *vxlan_gpe_gro_receive(struct sock *sk,
-					     struct list_head *head,
-					     struct sk_buff *skb)
+static int vxlan_gpe_gro_receive(struct sock *sk, struct list_head *head,
+				 struct sk_buff *skb, int offset, int nh)
 {
 	const struct packet_offload *ptype;
 	struct sk_buff *pp = NULL;
@@ -737,25 +736,28 @@ static struct sk_buff *vxlan_gpe_gro_receive(struct sock *sk,
 		ptype = gro_find_receive_by_type(protocol);
 		if (!ptype)
 			goto out;
-		call_gro_receive(ptype->callbacks.gro_receive, head, skb, 0);
+		offset = call_gro_receive(ptype->callbacks.gro_receive, head,
+					  skb, offset + sizeof(struct vxlanhdr));
 		flush = 0;
 	}
 out:
 	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
-	return pp;
+	return offset;
 }
 
-static int vxlan_gro_complete(struct sock *sk, struct sk_buff *skb, int nhoff)
+static int vxlan_gro_complete(struct sock *sk, struct sk_buff *skb, int thoff,
+			      int nh)
 {
 	/* Sets 'skb->inner_mac_header' since we are always called with
 	 * 'skb->encapsulation' set.
 	 */
-	return eth_gro_complete(skb, nhoff + sizeof(struct vxlanhdr));
+	return eth_gro_complete(skb, thoff + sizeof(struct vxlanhdr));
 }
 
-static int vxlan_gpe_gro_complete(struct sock *sk, struct sk_buff *skb, int nhoff)
+static int vxlan_gpe_gro_complete(struct sock *sk, struct sk_buff *skb, int thoff,
+				  int nh)
 {
-	struct vxlanhdr *vh = (struct vxlanhdr *)(skb->data + nhoff);
+	struct vxlanhdr *vh = (struct vxlanhdr *)(skb->data + thoff);
 	const struct packet_offload *ptype;
 	int err = -ENOSYS;
 	__be16 protocol;
@@ -764,7 +766,7 @@ static int vxlan_gpe_gro_complete(struct sock *sk, struct sk_buff *skb, int nhof
 		return err;
 	ptype = gro_find_complete_by_type(protocol);
 	if (ptype)
-		err = ptype->callbacks.gro_complete(skb, nhoff + sizeof(struct vxlanhdr));
+		err = ptype->callbacks.gro_complete(skb, thoff + sizeof(struct vxlanhdr));
 	return err;
 }
 

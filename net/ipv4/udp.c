@@ -2954,9 +2954,8 @@ void udp_destroy_sock(struct sock *sk)
 	}
 }
 
-typedef struct sk_buff *(*udp_gro_receive_t)(struct sock *sk,
-					     struct list_head *head,
-					     struct sk_buff *skb);
+typedef int (*udp_gro_receive_t)(struct sock *sk, struct list_head *head,
+				 struct sk_buff *skb, int offset, int nh);
 
 static void set_xfrm_gro_udp_encap_rcv(__u16 encap_type, unsigned short family,
 				       struct sock *sk)

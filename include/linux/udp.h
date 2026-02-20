@@ -89,12 +89,13 @@ struct udp_sock {
 	void (*encap_destroy)(struct sock *sk);
 
 	/* GRO functions for UDP socket */
-	struct sk_buff *	(*gro_receive)(struct sock *sk,
+	int			(*gro_receive)(struct sock *sk,
 					       struct list_head *head,
-					       struct sk_buff *skb);
+					       struct sk_buff *skb,
+					       int offset, int nh);
 	int			(*gro_complete)(struct sock *sk,
 						struct sk_buff *skb,
-						int nhoff);
+						int offset, int nhoff);
 
 	struct udp_prod_queue *udp_prod_queue;
 

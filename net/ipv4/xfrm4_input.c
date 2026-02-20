@@ -176,12 +176,11 @@ int xfrm4_udp_encap_rcv(struct sock *sk, struct sk_buff *skb)
 }
 EXPORT_SYMBOL(xfrm4_udp_encap_rcv);
 
-struct sk_buff *xfrm4_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
-					struct sk_buff *skb)
+int xfrm4_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
+			    struct sk_buff *skb, int off, int nh)
 {
 	int offset = skb_gro_offset(skb);
 	const struct net_offload *ops;
-	struct sk_buff *pp = NULL;
 	int len, dlen;
 	__u8 *udpdata;
 	__be32 *udpdata32;
@@ -191,7 +190,7 @@ struct sk_buff *xfrm4_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
 	udpdata = skb_gro_header(skb, dlen, offset);
 	udpdata32 = (__be32 *)udpdata;
 	if (unlikely(!udpdata))
-		return NULL;
+		return offset;
 
 	rcu_read_lock();
 	ops = rcu_dereference(inet_offloads[IPPROTO_ESP]);
@@ -207,18 +206,18 @@ struct sk_buff *xfrm4_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
 
 	NAPI_GRO_CB(skb)->proto = IPPROTO_UDP;
 
-	call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
-			     offset, 0);
+	offset = call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
+				      offset, nh);
 	rcu_read_unlock();
 
-	return pp;
+	return offset;
 
 out:
 	rcu_read_unlock();
 	NAPI_GRO_CB(skb)->same_flow = 0;
 	NAPI_GRO_CB(skb)->flush = 1;
 
-	return NULL;
+	return offset;
 }
 EXPORT_SYMBOL(xfrm4_gro_udp_encap_rcv);
 

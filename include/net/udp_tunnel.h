@@ -76,11 +76,12 @@ typedef void (*udp_tunnel_encap_err_rcv_t)(struct sock *sk,
 					   struct sk_buff *skb, int err,
 					   __be16 port, u32 info, u8 *payload);
 typedef void (*udp_tunnel_encap_destroy_t)(struct sock *sk);
-typedef struct sk_buff *(*udp_tunnel_gro_receive_t)(struct sock *sk,
-						    struct list_head *head,
-						    struct sk_buff *skb);
+typedef int (*udp_tunnel_gro_receive_t)(struct sock *sk,
+					struct list_head *head,
+					struct sk_buff *skb,
+					int offset, int nh);
 typedef int (*udp_tunnel_gro_complete_t)(struct sock *sk, struct sk_buff *skb,
-					 int nhoff);
+					 int offset, int nh);
 
 struct udp_tunnel_sock_cfg {
 	void *sk_user_data;     /* user data used by encap_rcv call back */

@@ -20,17 +20,15 @@
  * Dummy GRO tunnel callback, exists mainly to avoid dangling/NULL
  * values for the udp tunnel static call.
  */
-static struct sk_buff *dummy_gro_rcv(struct sock *sk,
-				     struct list_head *head,
-				     struct sk_buff *skb)
+static int dummy_gro_rcv(struct sock *sk, struct list_head *head,
+			 struct sk_buff *skb, int offset, int nh)
 {
 	NAPI_GRO_CB(skb)->flush = 1;
-	return NULL;
+	return offset;
 }
 
-typedef struct sk_buff *(*udp_tunnel_gro_rcv_t)(struct sock *sk,
-						struct list_head *head,
-						struct sk_buff *skb);
+typedef int (*udp_tunnel_gro_rcv_t)(struct sock *sk, struct list_head *head,
+				    struct sk_buff *skb, int offset, int nh);
 
 struct udp_tunnel_type_entry {
 	udp_tunnel_gro_rcv_t gro_receive;
@@ -144,27 +142,28 @@ out:
 }
 EXPORT_SYMBOL_GPL(udp_tunnel_update_gro_rcv);
 
-static struct sk_buff *udp_tunnel_gro_rcv(struct sock *sk,
-					  struct list_head *head,
-					  struct sk_buff *skb)
+static int udp_tunnel_gro_rcv(struct sock *sk, struct list_head *head,
+			      struct sk_buff *skb, int offset, int nh)
 {
 	if (static_branch_likely(&udp_tunnel_static_call)) {
 		if (unlikely(gro_recursion_inc_test(skb))) {
 			NAPI_GRO_CB(skb)->flush |= 1;
-			return NULL;
+			return offset;
 		}
-		return static_call(udp_tunnel_gro_rcv)(sk, head, skb);
+		return static_call(udp_tunnel_gro_rcv)(sk, head, skb, offset,
+				   nh);
 	}
-	return call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb);
+	return call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb,
+				   offset, nh);
 }
 
 #else
 
-static struct sk_buff *udp_tunnel_gro_rcv(struct sock *sk,
-					  struct list_head *head,
-					  struct sk_buff *skb)
+static int udp_tunnel_gro_rcv(struct sock *sk, struct list_head *head,
+			      struct sk_buff *skb, int offset, int nh)
 {
-	return call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb);
+	return call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb,
+				   offset, nh);
 }
 
 #endif
@@ -846,7 +845,7 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
 
 	skb_gro_pull(skb, sizeof(struct udphdr)); /* pull encapsulating udp header */
 	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
-	pp = udp_tunnel_gro_rcv(sk, head, skb);
+	udp_tunnel_gro_rcv(sk, head, skb, off + sizeof(struct udphdr), 0);
 
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
@@ -948,7 +947,7 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
 		 */
 		skb->encapsulation = 1;
 		err = udp_sk(sk)->gro_complete(sk, skb,
-				nhoff + sizeof(struct udphdr));
+				nhoff + sizeof(struct udphdr), nhoff);
 	} else {
 		err = udp_gro_complete_segment(skb);
 	}

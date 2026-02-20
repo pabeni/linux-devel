@@ -241,13 +241,11 @@ static const struct net_offload *fou_gro_ops(const struct sock *sk,
 	return rcu_dereference(offloads[proto]);
 }
 
-static struct sk_buff *fou_gro_receive(struct sock *sk,
-				       struct list_head *head,
-				       struct sk_buff *skb)
+static int fou_gro_receive(struct sock *sk, struct list_head *head,
+			   struct sk_buff *skb, int offset, int nh)
 {
 	struct fou *fou = fou_from_sock(sk);
 	const struct net_offload *ops;
-	struct sk_buff *pp = NULL;
 
 	if (!fou)
 		goto out;
@@ -267,14 +265,15 @@ static struct sk_buff *fou_gro_receive(struct sock *sk,
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	call_net_gro_receive(ops->callbacks.gro_receive, head, skb, 0, 0);
+	offset = call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
+				      offset, nh);
 
 out:
-	return pp;
+	return offset;
 }
 
 static int fou_gro_complete(struct sock *sk, struct sk_buff *skb,
-			    int nhoff)
+			    int thoff, int nh)
 {
 	struct fou *fou = fou_from_sock(sk);
 	const struct net_offload *ops;
@@ -291,9 +290,9 @@ static int fou_gro_complete(struct sock *sk, struct sk_buff *skb,
 		goto out;
 	}
 
-	err = ops->callbacks.gro_complete(skb, nhoff, 0);
+	err = ops->callbacks.gro_complete(skb, thoff, nh);
 
-	skb_set_inner_mac_header(skb, nhoff);
+	skb_set_inner_mac_header(skb, thoff);
 
 out:
 	return err;
@@ -322,9 +321,8 @@ static struct guehdr *gue_gro_remcsum(struct sk_buff *skb, unsigned int off,
 	return guehdr;
 }
 
-static struct sk_buff *gue_gro_receive(struct sock *sk,
-				       struct list_head *head,
-				       struct sk_buff *skb)
+static int gue_gro_receive(struct sock *sk, struct list_head *head,
+			   struct sk_buff *skb, int offset, int nh)
 {
 	const struct net_offload *ops;
 	struct sk_buff *pp = NULL;
@@ -456,19 +454,20 @@ next_proto:
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	len = call_net_gro_receive(ops->callbacks.gro_receive, head, skb, len,
-				   0);
+	offset = call_net_gro_receive(ops->callbacks.gro_receive, head, skb, len,
+				      nh);
 	flush = 0;
 
 out:
 	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
 
-	return pp;
+	return offset;
 }
 
-static int gue_gro_complete(struct sock *sk, struct sk_buff *skb, int nhoff)
+static int gue_gro_complete(struct sock *sk, struct sk_buff *skb, int thoff,
+			    int nh)
 {
-	struct guehdr *guehdr = (struct guehdr *)(skb->data + nhoff);
+	struct guehdr *guehdr = (struct guehdr *)(skb->data + thoff);
 	const struct net_offload *ops;
 	unsigned int guehlen = 0;
 	u8 proto;
@@ -499,9 +498,9 @@ static int gue_gro_complete(struct sock *sk, struct sk_buff *skb, int nhoff)
 	if (WARN_ON(!ops || !ops->callbacks.gro_complete))
 		goto out;
 
-	err = ops->callbacks.gro_complete(skb, nhoff + guehlen, nhoff);
+	err = ops->callbacks.gro_complete(skb, thoff + guehlen, nh);
 
-	skb_set_inner_mac_header(skb, nhoff + guehlen);
+	skb_set_inner_mac_header(skb, thoff + guehlen);
 
 out:
 	return err;

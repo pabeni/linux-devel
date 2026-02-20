@@ -865,9 +865,8 @@ static bool geneve_hdr_match(struct sk_buff *skb,
 	return true;
 }
 
-static struct sk_buff *geneve_gro_receive(struct sock *sk,
-					  struct list_head *head,
-					  struct sk_buff *skb)
+static int geneve_gro_receive(struct sock *sk, struct list_head *head,
+			      struct sk_buff *skb, int offset, int nh)
 {
 	unsigned int hlen, gh_len, off_gnv, hint_off;
 	const struct geneve_opt_gro_hint *gro_hint;
@@ -927,26 +926,25 @@ static struct sk_buff *geneve_gro_receive(struct sock *sk,
 
 	skb_gro_pull(skb, gh_len);
 	skb_gro_postpull_rcsum(skb, gh, gh_len);
-	if (likely(type == htons(ETH_P_TEB))) {
-		call_gro_receive(eth_gro_receive, head, skb, 0);
-		return NULL;
-	}
+	if (likely(type == htons(ETH_P_TEB)))
+		return call_gro_receive(eth_gro_receive, head, skb, 0);
 
 	ptype = gro_find_receive_by_type(type);
 	if (!ptype)
 		goto out;
 
-	call_gro_receive(ptype->callbacks.gro_receive, head, skb, 0);
+	offset = call_gro_receive(ptype->callbacks.gro_receive, head, skb,
+				  0);
 	flush = 0;
 
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return pp;
+	return offset;
 }
 
 static int geneve_gro_complete(struct sock *sk, struct sk_buff *skb,
-			       int nhoff)
+			       int thoff, int nhoff)
 {
 	struct genevehdr *gh;
 	struct packet_offload *ptype;
@@ -954,20 +952,20 @@ static int geneve_gro_complete(struct sock *sk, struct sk_buff *skb,
 	int gh_len;
 	int err = -ENOSYS;
 
-	gh = (struct genevehdr *)(skb->data + nhoff);
+	gh = (struct genevehdr *)(skb->data + thoff);
 	gh_len = geneve_hlen(gh);
 	type = gh->proto_type;
 	geneve_opt_gro_hint_off(gh, &type, &gh_len);
 
 	/* since skb->encapsulation is set, eth_gro_complete() sets the inner mac header */
 	if (likely(type == htons(ETH_P_TEB)))
-		return eth_gro_complete(skb, nhoff + gh_len);
+		return eth_gro_complete(skb, thoff + gh_len);
 
 	ptype = gro_find_complete_by_type(type);
 	if (ptype)
-		err = ptype->callbacks.gro_complete(skb, nhoff + gh_len);
+		err = ptype->callbacks.gro_complete(skb, thoff + gh_len);
 
-	skb_set_inner_mac_header(skb, nhoff + gh_len);
+	skb_set_inner_mac_header(skb, thoff + gh_len);
 
 	return err;
 }

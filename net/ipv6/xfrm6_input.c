@@ -173,8 +173,8 @@ int xfrm6_udp_encap_rcv(struct sock *sk, struct sk_buff *skb)
 	return ret;
 }
 
-struct sk_buff *xfrm6_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
-					struct sk_buff *skb)
+int xfrm6_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
+			    struct sk_buff *skb, int off, int nh)
 {
 	int offset = skb_gro_offset(skb);
 	const struct net_offload *ops;
@@ -183,14 +183,14 @@ struct sk_buff *xfrm6_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
 	__be32 *udpdata32;
 
 	if (skb->protocol == htons(ETH_P_IP))
-		return xfrm4_gro_udp_encap_rcv(sk, head, skb);
+		return xfrm4_gro_udp_encap_rcv(sk, head, skb, offset, nh);
 
 	len = skb->len - offset;
 	dlen = offset + min(len, 8);
 	udpdata = skb_gro_header(skb, dlen, offset);
 	udpdata32 = (__be32 *)udpdata;
 	if (unlikely(!udpdata))
-		return NULL;
+		return offset;
 
 	rcu_read_lock();
 	ops = rcu_dereference(inet6_offloads[IPPROTO_ESP]);
@@ -206,18 +206,18 @@ struct sk_buff *xfrm6_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
 
 	NAPI_GRO_CB(skb)->proto = IPPROTO_UDP;
 
-	call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
-				  offset + sizeof(struct ip_esp_hdr), 0);
+	offset = call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
+				      offset + sizeof(struct ip_esp_hdr), nh);
 	rcu_read_unlock();
 
-	return NULL;
+	return offset;
 
 out:
 	rcu_read_unlock();
 	NAPI_GRO_CB(skb)->same_flow = 0;
 	NAPI_GRO_CB(skb)->flush = 1;
 
-	return NULL;
+	return offset;
 }
 
 int xfrm6_rcv_tnl(struct sk_buff *skb, struct ip6_tnl *t)
