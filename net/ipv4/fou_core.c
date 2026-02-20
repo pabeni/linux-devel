@@ -325,10 +325,9 @@ static int gue_gro_receive(struct sock *sk, struct list_head *head,
 			   struct sk_buff *skb, int offset, int nh)
 {
 	const struct net_offload *ops;
-	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
 	struct guehdr *guehdr;
-	size_t len, optlen, hdrlen, off;
+	size_t len, optlen, hdrlen;
 	void *data;
 	u16 doffset = 0;
 	int flush = 1;
@@ -341,10 +340,9 @@ static int gue_gro_receive(struct sock *sk, struct list_head *head,
 	if (!fou)
 		goto out;
 
-	off = skb_gro_offset(skb);
-	len = off + sizeof(*guehdr);
+	len = offset + sizeof(*guehdr);
 
-	guehdr = skb_gro_header(skb, len, off);
+	guehdr = skb_gro_header(skb, len, offset);
 	if (unlikely(!guehdr))
 		goto out;
 
@@ -371,7 +369,7 @@ static int gue_gro_receive(struct sock *sk, struct list_head *head,
 	len += optlen;
 
 	if (!skb_gro_may_pull(skb, len)) {
-		guehdr = skb_gro_header_slow(skb, len, off);
+		guehdr = skb_gro_header_slow(skb, len, offset);
 		if (unlikely(!guehdr))
 			goto out;
 	}
@@ -395,7 +393,7 @@ static int gue_gro_receive(struct sock *sk, struct list_head *head,
 		doffset += GUE_LEN_PRIV;
 
 		if (flags & GUE_PFLAG_REMCSUM) {
-			guehdr = gue_gro_remcsum(skb, off, guehdr,
+			guehdr = gue_gro_remcsum(skb, offset, guehdr,
 						 data + doffset, hdrlen, &grc,
 						 !!(fou->flags &
 						    FOU_F_REMCSUM_NOPARTIAL));
@@ -409,15 +407,13 @@ static int gue_gro_receive(struct sock *sk, struct list_head *head,
 		}
 	}
 
-	skb_gro_pull(skb, hdrlen);
-
 	list_for_each_entry(p, head, list) {
 		const struct guehdr *guehdr2;
 
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		guehdr2 = (struct guehdr *)(p->data + off);
+		guehdr2 = (struct guehdr *)(p->data + offset);
 
 		/* Compare base GUE header to be equal (covers
 		 * hlen, version, proto_ctype, and flags.
@@ -459,7 +455,7 @@ next_proto:
 	flush = 0;
 
 out:
-	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum(skb, offset, flush, &grc);
 
 	return offset;
 }

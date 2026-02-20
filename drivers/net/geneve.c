@@ -527,7 +527,7 @@ geneve_opt_gro_hint_validate(void *data,
  * in the linear part.
  */
 static bool
-geneve_opt_gro_hint_validate_csum(const struct sk_buff *skb,
+geneve_opt_gro_hint_validate_csum(const struct sk_buff *skb, int offset,
 				  const struct genevehdr *gh,
 				  const struct geneve_opt_gro_hint *gro_hint)
 {
@@ -553,7 +553,7 @@ geneve_opt_gro_hint_validate_csum(const struct sk_buff *skb,
 	/* Compute the complete checksum up to the nested transport. */
 	plen = gh_len + gro_hint->nested_tp_offset;
 	csum = csum_sub(NAPI_GRO_CB(skb)->csum, csum_partial(gh, plen, 0));
-	nested_len = skb_gro_len_deprecated(skb) - plen;
+	nested_len = skb_gro_len(skb, offset) - plen;
 
 	/* Compute the nested pseudo header csum. */
 	ipv6h = nested + gro_hint->nested_nh_offset;
@@ -868,18 +868,16 @@ static bool geneve_hdr_match(struct sk_buff *skb,
 static int geneve_gro_receive(struct sock *sk, struct list_head *head,
 			      struct sk_buff *skb, int offset, int nh)
 {
-	unsigned int hlen, gh_len, off_gnv, hint_off;
 	const struct geneve_opt_gro_hint *gro_hint;
+	unsigned int hlen, gh_len, hint_off;
 	const struct packet_offload *ptype;
 	struct genevehdr *gh, *gh2;
-	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
 	int flush = 1;
 	__be16 type;
 
-	off_gnv = skb_gro_offset(skb);
-	hlen = off_gnv + sizeof(*gh);
-	gh = skb_gro_header(skb, hlen, off_gnv);
+	hlen = offset + sizeof(*gh);
+	gh = skb_gro_header(skb, hlen, offset);
 	if (unlikely(!gh))
 		goto out;
 
@@ -888,9 +886,9 @@ static int geneve_gro_receive(struct sock *sk, struct list_head *head,
 	gh_len = geneve_hlen(gh);
 	type = gh->proto_type;
 
-	hlen = off_gnv + gh_len;
+	hlen = offset + gh_len;
 	if (!skb_gro_may_pull(skb, hlen)) {
-		gh = skb_gro_header_slow(skb, hlen, off_gnv);
+		gh = skb_gro_header_slow(skb, hlen, offset);
 		if (unlikely(!gh))
 			goto out;
 	}
@@ -904,41 +902,43 @@ static int geneve_gro_receive(struct sock *sk, struct list_head *head,
 		 * not attempt plain GRO: it will ignore inner hdrs and cause
 		 * OoO.
 		 */
-		gh = skb_gro_header(skb, off_gnv + gh_len, off_gnv);
+		gh = skb_gro_header(skb, offset + gh_len, offset);
 		if (unlikely(!gh))
 			goto out;
 
 		gro_hint = geneve_opt_gro_hint(gh, hint_off);
-		if (!geneve_opt_gro_hint_validate_csum(skb, gh, gro_hint))
+		if (!geneve_opt_gro_hint_validate_csum(skb, offset, gh,
+						       gro_hint))
 			goto out;
+
+		hlen = offset + gh_len;
 	}
 
 	list_for_each_entry(p, head, list) {
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		gh2 = (struct genevehdr *)(p->data + off_gnv);
+		gh2 = (struct genevehdr *)(p->data + offset);
 		if (!geneve_hdr_match(skb, gh, gh2, hint_off)) {
 			NAPI_GRO_CB(p)->same_flow = 0;
 			continue;
 		}
 	}
 
-	skb_gro_pull(skb, gh_len);
 	skb_gro_postpull_rcsum(skb, gh, gh_len);
 	if (likely(type == htons(ETH_P_TEB)))
-		return call_gro_receive(eth_gro_receive, head, skb, 0);
+		return call_gro_receive(eth_gro_receive, head, skb, hlen);
 
 	ptype = gro_find_receive_by_type(type);
 	if (!ptype)
 		goto out;
 
 	offset = call_gro_receive(ptype->callbacks.gro_receive, head, skb,
-				  0);
+				  hlen);
 	flush = 0;
 
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, offset, flush);
 
 	return offset;
 }

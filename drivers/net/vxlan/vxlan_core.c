@@ -656,17 +656,17 @@ static struct vxlanhdr *vxlan_gro_remcsum(struct sk_buff *skb,
 static struct vxlanhdr *vxlan_gro_prepare_receive(struct sock *sk,
 						  struct list_head *head,
 						  struct sk_buff *skb,
-						  struct gro_remcsum *grc)
+						  struct gro_remcsum *grc,
+						  int off_vx)
 {
 	struct sk_buff *p;
 	struct vxlanhdr *vh, *vh2;
-	unsigned int hlen, off_vx;
 	struct vxlan_sock *vs = rcu_dereference_sk_user_data(sk);
+	unsigned int hlen;
 	__be32 flags;
 
 	skb_gro_remcsum_init(grc);
 
-	off_vx = skb_gro_offset(skb);
 	hlen = off_vx + sizeof(*vh);
 	vh = skb_gro_header(skb, hlen, off_vx);
 	if (unlikely(!vh))
@@ -686,8 +686,6 @@ static struct vxlanhdr *vxlan_gro_prepare_receive(struct sock *sk,
 			return NULL;
 	}
 
-	skb_gro_pull(skb, sizeof(struct vxlanhdr)); /* pull vxlan header */
-
 	list_for_each_entry(p, head, list) {
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
@@ -706,16 +704,15 @@ static struct vxlanhdr *vxlan_gro_prepare_receive(struct sock *sk,
 static int vxlan_gro_receive(struct sock *sk, struct list_head *head,
 			     struct sk_buff *skb, int offset, int nh)
 {
-	struct sk_buff *pp = NULL;
 	struct gro_remcsum grc;
 	int flush = 1;
 
-	if (vxlan_gro_prepare_receive(sk, head, skb, &grc)) {
+	if (vxlan_gro_prepare_receive(sk, head, skb, &grc, offset)) {
 		offset = call_gro_receive(eth_gro_receive, head, skb,
 					  offset + sizeof(struct vxlanhdr));
 		flush = 0;
 	}
-	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum(skb, offset, flush, &grc);
 	return offset;
 }
 
@@ -723,13 +720,12 @@ static int vxlan_gpe_gro_receive(struct sock *sk, struct list_head *head,
 				 struct sk_buff *skb, int offset, int nh)
 {
 	const struct packet_offload *ptype;
-	struct sk_buff *pp = NULL;
 	struct gro_remcsum grc;
 	struct vxlanhdr *vh;
 	__be16 protocol;
 	int flush = 1;
 
-	vh = vxlan_gro_prepare_receive(sk, head, skb, &grc);
+	vh = vxlan_gro_prepare_receive(sk, head, skb, &grc, offset);
 	if (vh) {
 		if (!vxlan_parse_gpe_proto(vh, &protocol))
 			goto out;
@@ -741,7 +737,7 @@ static int vxlan_gpe_gro_receive(struct sock *sk, struct list_head *head,
 		flush = 0;
 	}
 out:
-	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum(skb, offset, flush, &grc);
 	return offset;
 }
 
