@@ -811,7 +811,7 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
 
 		if ((!sk && (skb->dev->features & NETIF_F_GRO_UDP_FWD)) ||
 		    (sk && udp_test_bit(GRO_ENABLED, sk)) || NAPI_GRO_CB(skb)->is_flist)
-			return call_gro_receive(udp_gro_receive_segment, head, skb);
+			return udp_gro_receive_segment(head, skb);
 
 		/* no GRO, be sure flush the current packet */
 		goto out;
