@@ -2953,8 +2953,8 @@ struct packet_type {
 struct offload_callbacks {
 	struct sk_buff		*(*gso_segment)(struct sk_buff *skb,
 						netdev_features_t features);
-	struct sk_buff		*(*gro_receive)(struct list_head *head,
-						struct sk_buff *skb);
+	int			(*gro_receive)(struct list_head *head,
+						struct sk_buff *skb, int offset);
 	int			(*gro_complete)(struct sk_buff *skb, int nhoff);
 };
 

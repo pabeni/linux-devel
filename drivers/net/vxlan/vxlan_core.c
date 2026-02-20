@@ -712,7 +712,7 @@ static struct sk_buff *vxlan_gro_receive(struct sock *sk,
 	int flush = 1;
 
 	if (vxlan_gro_prepare_receive(sk, head, skb, &grc)) {
-		pp = call_gro_receive(eth_gro_receive, head, skb);
+		call_gro_receive(eth_gro_receive, head, skb, 0);
 		flush = 0;
 	}
 	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
@@ -737,7 +737,7 @@ static struct sk_buff *vxlan_gpe_gro_receive(struct sock *sk,
 		ptype = gro_find_receive_by_type(protocol);
 		if (!ptype)
 			goto out;
-		pp = call_gro_receive(ptype->callbacks.gro_receive, head, skb);
+		call_gro_receive(ptype->callbacks.gro_receive, head, skb, 0);
 		flush = 0;
 	}
 out:

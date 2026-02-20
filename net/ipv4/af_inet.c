@@ -1465,7 +1465,7 @@ static struct sk_buff *ipip_gso_segment(struct sk_buff *skb,
 	return inet_gso_segment(skb, features);
 }
 
-struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb)
+int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset)
 {
 	const struct net_offload *ops;
 	struct sk_buff *pp = NULL;
@@ -1535,7 +1535,7 @@ struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb)
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return pp;
+	return 0;
 }
 
 static struct sk_buff *ipip_gro_receive(struct list_head *head,
@@ -1548,7 +1548,8 @@ static struct sk_buff *ipip_gro_receive(struct list_head *head,
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	return inet_gro_receive(head, skb);
+	inet_gro_receive(head, skb, 0);
+	return NULL;
 }
 
 #define SECONDS_PER_DAY	86400

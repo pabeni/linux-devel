@@ -33,6 +33,9 @@ struct napi_gro_cb {
 		};
 	};
 
+	/* Chain to be flushed. */
+	struct sk_buff *pp;
+
 	/* This indicates where we are processing relative to skb->data. */
 	int	data_offset;
 
@@ -108,17 +111,16 @@ static inline int gro_recursion_inc_test(struct sk_buff *skb)
 	return ++NAPI_GRO_CB(skb)->recursion_counter == GRO_RECURSION_LIMIT;
 }
 
-typedef struct sk_buff *(*gro_receive_t)(struct list_head *, struct sk_buff *);
-static inline struct sk_buff *call_gro_receive(gro_receive_t cb,
-					       struct list_head *head,
-					       struct sk_buff *skb)
+typedef int (*gro_receive_t)(struct list_head *, struct sk_buff *, int);
+static inline int call_gro_receive(gro_receive_t cb, struct list_head *head,
+				   struct sk_buff *skb, int offset)
 {
 	if (unlikely(gro_recursion_inc_test(skb))) {
 		NAPI_GRO_CB(skb)->flush |= 1;
-		return NULL;
+		return offset;
 	}
 
-	return cb(head, skb);
+	return cb(head, skb, offset);
 }
 
 typedef struct sk_buff *(*net_gro_receive_t)(struct list_head *,
@@ -452,11 +454,11 @@ static inline void skb_gro_flush_final_remcsum_deprecated(struct sk_buff *skb,
 }
 #endif
 
-INDIRECT_CALLABLE_DECLARE(struct sk_buff *ipv6_gro_receive(struct list_head *,
-							   struct sk_buff *));
+INDIRECT_CALLABLE_DECLARE(int ipv6_gro_receive(struct list_head *,
+					       struct sk_buff *, int));
 INDIRECT_CALLABLE_DECLARE(int ipv6_gro_complete(struct sk_buff *, int));
-INDIRECT_CALLABLE_DECLARE(struct sk_buff *inet_gro_receive(struct list_head *,
-							   struct sk_buff *));
+INDIRECT_CALLABLE_DECLARE(int inet_gro_receive(struct list_head *,
+					       struct sk_buff *, int));
 INDIRECT_CALLABLE_DECLARE(int inet_gro_complete(struct sk_buff *, int));
 
 INDIRECT_CALLABLE_DECLARE(struct sk_buff *udp4_gro_receive(struct list_head *,
@@ -466,11 +468,11 @@ INDIRECT_CALLABLE_DECLARE(int udp4_gro_complete(struct sk_buff *, int));
 struct sk_buff *udp6_gro_receive(struct list_head *, struct sk_buff *);
 int udp6_gro_complete(struct sk_buff *, int);
 
-#define indirect_call_gro_receive_inet(cb, f2, f1, head, skb)	\
-({								\
-	unlikely(gro_recursion_inc_test(skb)) ?			\
-		NAPI_GRO_CB(skb)->flush |= 1, NULL :		\
-		INDIRECT_CALL_INET(cb, f2, f1, head, skb);	\
+#define indirect_call_gro_receive_inet(cb, f2, f1, head, skb, offset)	\
+({									\
+	unlikely(gro_recursion_inc_test(skb)) ?				\
+		NAPI_GRO_CB(skb)->flush |= 1, offset :			\
+		INDIRECT_CALL_INET(cb, f2, f1, head, skb, offset);	\
 })
 
 struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,

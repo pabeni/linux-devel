@@ -224,7 +224,7 @@ static struct sk_buff *gre_gro_receive(struct list_head *head,
 	/* Adjusted NAPI_GRO_CB(skb)->csum after skb_gro_pull()*/
 	skb_gro_postpull_rcsum(skb, greh, grehlen);
 
-	pp = call_gro_receive(ptype->callbacks.gro_receive, head, skb);
+	hlen = call_gro_receive(ptype->callbacks.gro_receive, head, skb, hlen);
 	flush = 0;
 
 out:

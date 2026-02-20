@@ -390,7 +390,7 @@ ssize_t sysfs_format_mac(char *buf, const unsigned char *addr, int len)
 }
 EXPORT_SYMBOL(sysfs_format_mac);
 
-struct sk_buff *eth_gro_receive(struct list_head *head, struct sk_buff *skb)
+int eth_gro_receive(struct list_head *head, struct sk_buff *skb, int off)
 {
 	const struct packet_offload *ptype;
 	unsigned int hlen, off_eth;
@@ -430,14 +430,14 @@ struct sk_buff *eth_gro_receive(struct list_head *head, struct sk_buff *skb)
 	skb_gro_pull(skb, sizeof(*eh));
 	skb_gro_postpull_rcsum(skb, eh, sizeof(*eh));
 
-	pp = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
-					    ipv6_gro_receive, inet_gro_receive,
-					    head, skb);
+	off = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
+					     ipv6_gro_receive, inet_gro_receive,
+					     head, skb, off + sizeof(*eh));
 
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return pp;
+	return off;
 }
 EXPORT_SYMBOL(eth_gro_receive);
 

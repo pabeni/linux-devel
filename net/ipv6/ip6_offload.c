@@ -200,8 +200,8 @@ static int ipv6_exthdrs_len(struct ipv6hdr *iph,
 	return len;
 }
 
-INDIRECT_CALLABLE_SCOPE struct sk_buff *ipv6_gro_receive(struct list_head *head,
-							 struct sk_buff *skb)
+INDIRECT_CALLABLE_SCOPE int ipv6_gro_receive(struct list_head *head,
+					     struct sk_buff *skb, int offset)
 {
 	const struct net_offload *ops;
 	struct sk_buff *pp = NULL;
@@ -295,7 +295,7 @@ not_same_flow:
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return pp;
+	return 0;
 }
 
 static struct sk_buff *sit_ip6ip6_gro_receive(struct list_head *head,
@@ -310,7 +310,8 @@ static struct sk_buff *sit_ip6ip6_gro_receive(struct list_head *head,
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	return ipv6_gro_receive(head, skb);
+	ipv6_gro_receive(head, skb, 0);
+	return NULL;
 }
 
 static struct sk_buff *ip4ip6_gro_receive(struct list_head *head,
@@ -325,7 +326,8 @@ static struct sk_buff *ip4ip6_gro_receive(struct list_head *head,
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	return inet_gro_receive(head, skb);
+	inet_gro_receive(head, skb, 0);
+	return NULL;
 }
 
 INDIRECT_CALLABLE_SCOPE int ipv6_gro_complete(struct sk_buff *skb, int nhoff)

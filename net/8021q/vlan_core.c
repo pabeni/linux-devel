@@ -461,8 +461,8 @@ bool vlan_uses_dev(const struct net_device *dev)
 }
 EXPORT_SYMBOL(vlan_uses_dev);
 
-static struct sk_buff *vlan_gro_receive(struct list_head *head,
-					struct sk_buff *skb)
+static int vlan_gro_receive(struct list_head *head,
+			    struct sk_buff *skb, int off)
 {
 	const struct packet_offload *ptype;
 	unsigned int hlen, off_vlan;
@@ -502,14 +502,14 @@ static struct sk_buff *vlan_gro_receive(struct list_head *head,
 	skb_gro_pull(skb, sizeof(*vhdr));
 	skb_gro_postpull_rcsum(skb, vhdr, sizeof(*vhdr));
 
-	pp = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
-					    ipv6_gro_receive, inet_gro_receive,
-					    head, skb);
+	off = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
+					     ipv6_gro_receive, inet_gro_receive,
+					     head, skb, off + sizeof(*vhdr));
 
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return pp;
+	return off;
 }
 
 static int vlan_gro_complete(struct sk_buff *skb, int nhoff)

@@ -927,14 +927,16 @@ static struct sk_buff *geneve_gro_receive(struct sock *sk,
 
 	skb_gro_pull(skb, gh_len);
 	skb_gro_postpull_rcsum(skb, gh, gh_len);
-	if (likely(type == htons(ETH_P_TEB)))
-		return call_gro_receive(eth_gro_receive, head, skb);
+	if (likely(type == htons(ETH_P_TEB))) {
+		call_gro_receive(eth_gro_receive, head, skb, 0);
+		return NULL;
+	}
 
 	ptype = gro_find_receive_by_type(type);
 	if (!ptype)
 		goto out;
 
-	pp = call_gro_receive(ptype->callbacks.gro_receive, head, skb);
+	call_gro_receive(ptype->callbacks.gro_receive, head, skb, 0);
 	flush = 0;
 
 out:

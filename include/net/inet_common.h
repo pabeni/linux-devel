@@ -62,7 +62,7 @@ int inet_ctl_sock_create(struct sock **sk, unsigned short family,
 int inet_recv_error(struct sock *sk, struct msghdr *msg, int len,
 		    int *addr_len);
 
-struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb);
+int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset);
 int inet_gro_complete(struct sk_buff *skb, int nhoff);
 struct sk_buff *inet_gso_segment(struct sk_buff *skb,
 				 netdev_features_t features);

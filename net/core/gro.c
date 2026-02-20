@@ -395,6 +395,7 @@ static inline void skb_gro_reset_offset(struct sk_buff *skb, u32 nhoff)
 	headlen = skb_headlen(skb);
 	NAPI_GRO_CB(skb)->frag0 = skb->data;
 	NAPI_GRO_CB(skb)->frag0_len = headlen;
+	NAPI_GRO_CB(skb)->pp = NULL;
 	if (headlen)
 		return;
 
@@ -460,7 +461,8 @@ static void gro_flush_oldest(struct gro_node *gro, struct list_head *head)
 }
 
 static enum gro_result dev_gro_receive(struct gro_node *gro,
-				       struct sk_buff *skb)
+				       struct sk_buff *skb,
+				       int offset)
 {
 	u32 bucket = skb_get_hash_raw(skb) & (GRO_HASH_BUCKETS - 1);
 	struct list_head *head = &net_hotdata.offload_base;
@@ -512,9 +514,9 @@ found_ptype:
 		break;
 	}
 
-	pp = INDIRECT_CALL_INET(ptype->callbacks.gro_receive,
-				ipv6_gro_receive, inet_gro_receive,
-				&gro_list->list, skb);
+	offset = INDIRECT_CALL_INET(ptype->callbacks.gro_receive,
+				    ipv6_gro_receive, inet_gro_receive,
+				    &gro_list->list, skb, offset);
 
 	rcu_read_unlock();
 
@@ -526,7 +528,8 @@ found_ptype:
 	same_flow = NAPI_GRO_CB(skb)->same_flow;
 	ret = NAPI_GRO_CB(skb)->free ? GRO_MERGED_FREE : GRO_MERGED;
 
-	if (pp) {
+	if (NAPI_GRO_CB(skb)->pp) {
+		pp = NAPI_GRO_CB(skb)->pp;
 		skb_list_del_init(pp);
 		gro_complete(gro, pp);
 		gro_list->count--;
@@ -630,7 +633,7 @@ gro_result_t gro_receive_skb(struct gro_node *gro, struct sk_buff *skb)
 
 	skb_gro_reset_offset(skb, 0);
 
-	ret = gro_skb_finish(gro, skb, dev_gro_receive(gro, skb));
+	ret = gro_skb_finish(gro, skb, dev_gro_receive(gro, skb, 0));
 	trace_napi_gro_receive_exit(ret);
 
 	return ret;
@@ -767,7 +770,8 @@ gro_result_t napi_gro_frags(struct napi_struct *napi)
 
 	trace_napi_gro_frags_entry(skb);
 
-	ret = napi_frags_finish(napi, skb, dev_gro_receive(&napi->gro, skb));
+	ret = napi_frags_finish(napi, skb,
+				dev_gro_receive(&napi->gro, skb, ETH_HLEN));
 	trace_napi_gro_frags_exit(ret);
 
 	return ret;
