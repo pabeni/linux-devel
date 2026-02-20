@@ -267,7 +267,7 @@ static struct sk_buff *fou_gro_receive(struct sock *sk,
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	pp = call_net_gro_receive(ops->callbacks.gro_receive, head, skb);
+	call_net_gro_receive(ops->callbacks.gro_receive, head, skb, 0, 0);
 
 out:
 	return pp;
@@ -291,7 +291,7 @@ static int fou_gro_complete(struct sock *sk, struct sk_buff *skb,
 		goto out;
 	}
 
-	err = ops->callbacks.gro_complete(skb, nhoff);
+	err = ops->callbacks.gro_complete(skb, nhoff, 0);
 
 	skb_set_inner_mac_header(skb, nhoff);
 
@@ -456,7 +456,8 @@ next_proto:
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out;
 
-	pp = call_net_gro_receive(ops->callbacks.gro_receive, head, skb);
+	len = call_net_gro_receive(ops->callbacks.gro_receive, head, skb, len,
+				   0);
 	flush = 0;
 
 out:
@@ -498,7 +499,7 @@ static int gue_gro_complete(struct sock *sk, struct sk_buff *skb, int nhoff)
 	if (WARN_ON(!ops || !ops->callbacks.gro_complete))
 		goto out;
 
-	err = ops->callbacks.gro_complete(skb, nhoff + guehlen);
+	err = ops->callbacks.gro_complete(skb, nhoff + guehlen, nhoff);
 
 	skb_set_inner_mac_header(skb, nhoff + guehlen);
 

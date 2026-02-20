@@ -1529,27 +1529,27 @@ int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset)
 	skb_gro_pull(skb, sizeof(*iph));
 	skb_set_transport_header(skb, skb_gro_offset(skb));
 
-	pp = indirect_call_gro_receive(tcp4_gro_receive, udp4_gro_receive,
-				       ops->callbacks.gro_receive, head, skb);
+	off = indirect_call_gro_receive(tcp4_gro_receive, udp4_gro_receive,
+				       ops->callbacks.gro_receive, head, skb,
+				       hlen, off);
 
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return 0;
+	return off;
 }
 
-static struct sk_buff *ipip_gro_receive(struct list_head *head,
-					struct sk_buff *skb)
+static int ipip_gro_receive(struct list_head *head,
+			    struct sk_buff *skb, int offset, int nh)
 {
 	if (NAPI_GRO_CB(skb)->encap_mark) {
 		NAPI_GRO_CB(skb)->flush = 1;
-		return NULL;
+		return offset;
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	inet_gro_receive(head, skb, 0);
-	return NULL;
+	return inet_gro_receive(head, skb, offset);
 }
 
 #define SECONDS_PER_DAY	86400
@@ -1618,13 +1618,13 @@ int inet_gro_complete(struct sk_buff *skb, int nhoff)
 	 */
 	err = INDIRECT_CALL_2(ops->callbacks.gro_complete,
 			      tcp4_gro_complete, udp4_gro_complete,
-			      skb, nhoff + sizeof(*iph));
+			      skb, nhoff + sizeof(*iph), nhoff);
 
 out:
 	return err;
 }
 
-static int ipip_gro_complete(struct sk_buff *skb, int nhoff)
+static int ipip_gro_complete(struct sk_buff *skb, int nhoff, int off)
 {
 	skb->encapsulation = 1;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_IPXIP4;

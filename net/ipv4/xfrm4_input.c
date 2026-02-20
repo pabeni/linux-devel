@@ -207,7 +207,8 @@ struct sk_buff *xfrm4_gro_udp_encap_rcv(struct sock *sk, struct list_head *head,
 
 	NAPI_GRO_CB(skb)->proto = IPPROTO_UDP;
 
-	pp = call_net_gro_receive(ops->callbacks.gro_receive, head, skb);
+	call_net_gro_receive(ops->callbacks.gro_receive, head, skb,
+			     offset, 0);
 	rcu_read_unlock();
 
 	return pp;

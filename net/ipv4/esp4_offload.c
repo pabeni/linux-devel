@@ -27,8 +27,8 @@
 #include <linux/spinlock.h>
 #include <net/udp.h>
 
-static struct sk_buff *esp4_gro_receive(struct list_head *head,
-					struct sk_buff *skb)
+static int esp4_gro_receive(struct list_head *head,
+			    struct sk_buff *skb, int off, int nh)
 {
 	int offset = skb_gro_offset(skb);
 	struct xfrm_offload *xo;
@@ -38,7 +38,7 @@ static struct sk_buff *esp4_gro_receive(struct list_head *head,
 	__be32 spi;
 
 	if (!pskb_pull(skb, offset))
-		return NULL;
+		return offset;
 
 	if (xfrm_parse_spi(skb, IPPROTO_ESP, &spi, &seq) != 0)
 		goto out;
@@ -90,7 +90,7 @@ static struct sk_buff *esp4_gro_receive(struct list_head *head,
 	 * the error handling and frees the resources on error. */
 	xfrm_input(skb, IPPROTO_ESP, spi, encap_type);
 
-	return ERR_PTR(-EINPROGRESS);
+	return -EINPROGRESS;
 out_reset:
 	secpath_reset(skb);
 out:
@@ -98,7 +98,7 @@ out:
 	NAPI_GRO_CB(skb)->same_flow = 0;
 	NAPI_GRO_CB(skb)->flush = 1;
 
-	return NULL;
+	return offset;
 }
 
 static void esp4_gso_encap(struct xfrm_state *x, struct sk_buff *skb)

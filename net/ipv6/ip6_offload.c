@@ -284,50 +284,49 @@ not_same_flow:
 		goto out;
 	}
 
+	hlen = off + nlen;
 	if (likely(proto == IPPROTO_TCP))
-		pp = tcp6_gro_receive(head, skb);
+		off = tcp6_gro_receive(head, skb, hlen, off);
 #if IS_BUILTIN(CONFIG_IPV6)
 	else if (likely(proto == IPPROTO_UDP))
-		pp = udp6_gro_receive(head, skb);
+		off = udp6_gro_receive(head, skb, hlen, off);
 #endif
 	else
-		pp = ops->callbacks.gro_receive(head, skb);
+		off = ops->callbacks.gro_receive(head, skb, hlen, off);
 out:
 	skb_gro_flush_final_deprecated(skb, pp, flush);
 
-	return 0;
+	return off;
 }
 
-static struct sk_buff *sit_ip6ip6_gro_receive(struct list_head *head,
-					      struct sk_buff *skb)
+static int sit_ip6ip6_gro_receive(struct list_head *head,
+				  struct sk_buff *skb, int offset, int nh)
 {
 	/* Common GRO receive for SIT and IP6IP6 */
 
 	if (NAPI_GRO_CB(skb)->encap_mark) {
 		NAPI_GRO_CB(skb)->flush = 1;
-		return NULL;
+		return offset;
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	ipv6_gro_receive(head, skb, 0);
-	return NULL;
+	return ipv6_gro_receive(head, skb, offset);
 }
 
-static struct sk_buff *ip4ip6_gro_receive(struct list_head *head,
-					  struct sk_buff *skb)
+static int ip4ip6_gro_receive(struct list_head *head,
+			      struct sk_buff *skb, int offset, int nh)
 {
 	/* Common GRO receive for SIT and IP6IP6 */
 
 	if (NAPI_GRO_CB(skb)->encap_mark) {
 		NAPI_GRO_CB(skb)->flush = 1;
-		return NULL;
+		return offset;
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
 
-	inet_gro_receive(head, skb, 0);
-	return NULL;
+	return inet_gro_receive(head, skb, offset);
 }
 
 INDIRECT_CALLABLE_SCOPE int ipv6_gro_complete(struct sk_buff *skb, int nhoff)
@@ -347,36 +346,36 @@ INDIRECT_CALLABLE_SCOPE int ipv6_gro_complete(struct sk_buff *skb, int nhoff)
 	nhoff += sizeof(*iph) + ipv6_exthdrs_len(iph, &ops);
 
 	if (likely(ops == &net_hotdata.tcpv6_offload))
-		return tcp6_gro_complete(skb, nhoff);
+		return tcp6_gro_complete(skb, nhoff, 0);
 #if IS_BUILTIN(CONFIG_IPV6)
 	if (ops == &net_hotdata.udpv6_offload)
-		return udp6_gro_complete(skb, nhoff);
+		return udp6_gro_complete(skb, nhoff, 0);
 #endif
 
 	if (WARN_ON(!ops || !ops->callbacks.gro_complete))
 		goto out;
 
-	err = ops->callbacks.gro_complete(skb, nhoff);
+	err = ops->callbacks.gro_complete(skb, nhoff, 0);
 
 out:
 	return err;
 }
 
-static int sit_gro_complete(struct sk_buff *skb, int nhoff)
+static int sit_gro_complete(struct sk_buff *skb, int nhoff, int off)
 {
 	skb->encapsulation = 1;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_IPXIP4;
 	return ipv6_gro_complete(skb, nhoff);
 }
 
-static int ip6ip6_gro_complete(struct sk_buff *skb, int nhoff)
+static int ip6ip6_gro_complete(struct sk_buff *skb, int nhoff, int off)
 {
 	skb->encapsulation = 1;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_IPXIP6;
 	return ipv6_gro_complete(skb, nhoff);
 }
 
-static int ip4ip6_gro_complete(struct sk_buff *skb, int nhoff)
+static int ip4ip6_gro_complete(struct sk_buff *skb, int nhoff, int off)
 {
 	skb->encapsulation = 1;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_IPXIP6;

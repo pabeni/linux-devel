@@ -416,7 +416,8 @@ static void tcp4_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 }
 
 INDIRECT_CALLABLE_SCOPE
-struct sk_buff *tcp4_gro_receive(struct list_head *head, struct sk_buff *skb)
+int tcp4_gro_receive(struct list_head *head, struct sk_buff *skb, int offset,
+		     int nh)
 {
 	struct tcphdr *th;
 
@@ -432,14 +433,16 @@ struct sk_buff *tcp4_gro_receive(struct list_head *head, struct sk_buff *skb)
 
 	tcp4_check_fraglist_gro(head, skb, th);
 
-	return tcp_gro_receive(head, skb, th);
+	tcp_gro_receive(head, skb, th);
+	return 0;
 
 flush:
 	NAPI_GRO_CB(skb)->flush = 1;
-	return NULL;
+	return offset;
 }
 
-INDIRECT_CALLABLE_SCOPE int tcp4_gro_complete(struct sk_buff *skb, int thoff)
+INDIRECT_CALLABLE_SCOPE int tcp4_gro_complete(struct sk_buff *skb, int thoff,
+					      int nhoff)
 {
 	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
 	const struct iphdr *iph = (struct iphdr *)(skb->data + offset);

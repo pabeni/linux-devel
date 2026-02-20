@@ -874,11 +874,11 @@ static struct sock *udp4_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
 }
 
 INDIRECT_CALLABLE_SCOPE
-struct sk_buff *udp4_gro_receive(struct list_head *head, struct sk_buff *skb)
+int udp4_gro_receive(struct list_head *head, struct sk_buff *skb,
+		     int offset, int nh)
 {
 	struct udphdr *uh = udp_gro_udphdr(skb);
 	struct sock *sk = NULL;
-	struct sk_buff *pp;
 
 	if (unlikely(!uh))
 		goto flush;
@@ -897,12 +897,12 @@ skip:
 	if (static_branch_unlikely(&udp_encap_needed_key))
 		sk = udp4_gro_lookup_skb(skb, uh->source, uh->dest);
 
-	pp = udp_gro_receive(head, skb, uh, sk);
-	return pp;
+	udp_gro_receive(head, skb, uh, sk);
+	return 0;
 
 flush:
 	NAPI_GRO_CB(skb)->flush = 1;
-	return NULL;
+	return offset;
 }
 
 static int udp_gro_complete_segment(struct sk_buff *skb)
@@ -960,15 +960,15 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
 }
 EXPORT_SYMBOL(udp_gro_complete);
 
-INDIRECT_CALLABLE_SCOPE int udp4_gro_complete(struct sk_buff *skb, int nhoff)
+INDIRECT_CALLABLE_SCOPE int udp4_gro_complete(struct sk_buff *skb, int uhoff, int nhoff)
 {
 	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
 	const struct iphdr *iph = (struct iphdr *)(skb->data + offset);
-	struct udphdr *uh = (struct udphdr *)(skb->data + nhoff);
+	struct udphdr *uh = (struct udphdr *)(skb->data + uhoff);
 
 	/* do fraglist only if there is no outer UDP encap (or we already processed it) */
 	if (NAPI_GRO_CB(skb)->is_flist && !NAPI_GRO_CB(skb)->encap_mark) {
-		uh->len = htons(skb->len - nhoff);
+		uh->len = htons(skb->len - uhoff);
 
 		skb_shinfo(skb)->gso_type |= (SKB_GSO_FRAGLIST|SKB_GSO_UDP_L4);
 		skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
@@ -979,10 +979,10 @@ INDIRECT_CALLABLE_SCOPE int udp4_gro_complete(struct sk_buff *skb, int nhoff)
 	}
 
 	if (uh->check)
-		uh->check = ~udp_v4_check(skb->len - nhoff, iph->saddr,
+		uh->check = ~udp_v4_check(skb->len - uhoff, iph->saddr,
 					  iph->daddr, 0);
 
-	return udp_gro_complete(skb, nhoff, udp4_lib_lookup_skb);
+	return udp_gro_complete(skb, uhoff, udp4_lib_lookup_skb);
 }
 
 int __init udpv4_offload_init(void)
