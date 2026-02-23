@@ -186,7 +186,8 @@ static int gre_gro_receive(struct list_head *head, struct sk_buff *skb,
 			goto out;
 
 		skb_gro_checksum_try_convert(skb, IPPROTO_GRE,
-					     null_compute_pseudo);
+					     gro_null_compute_pseudo,
+					     offset, nh);
 	}
 
 	list_for_each_entry(p, head, list) {

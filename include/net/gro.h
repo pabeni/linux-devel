@@ -226,12 +226,12 @@ static inline void *skb_gro_pulled_header(const struct sk_buff *skb,
 }
 
 static inline __wsum inet_gro_compute_pseudo(const struct sk_buff *skb,
-					     int proto)
+					     int proto, int offset, int nh)
 {
-	const struct iphdr *iph = skb_gro_network_header_deprecated(skb);
+	const struct iphdr *iph = skb_gro_pulled_header(skb, offset, nh);
 
 	return csum_tcpudp_nofold(iph->saddr, iph->daddr,
-				  skb_gro_len_deprecated(skb), proto, 0);
+				  skb_gro_len(skb, offset), proto, 0);
 }
 
 static inline void skb_gro_postpull_rcsum(struct sk_buff *skb,
@@ -247,27 +247,28 @@ static inline void skb_gro_postpull_rcsum(struct sk_buff *skb,
  * offsets and fields in sk_buff.
  */
 
-__sum16 __skb_gro_checksum_complete(struct sk_buff *skb);
+__sum16 __skb_gro_checksum_complete(struct sk_buff *skb, int offset);
 
-static inline bool skb_at_gro_remcsum_start(struct sk_buff *skb)
+static inline bool skb_at_gro_remcsum_start(struct sk_buff *skb, int offset)
 {
-	return (NAPI_GRO_CB(skb)->gro_remcsum_start == skb_gro_offset(skb));
+	return (NAPI_GRO_CB(skb)->gro_remcsum_start == offset);
 }
 
 static inline bool __skb_gro_checksum_validate_needed(struct sk_buff *skb,
 						      bool zero_okay,
-						      __sum16 check)
+						      __sum16 check,
+						      int offset)
 {
 	return ((skb->ip_summed != CHECKSUM_PARTIAL ||
-		skb_checksum_start_offset(skb) <
-		 skb_gro_offset(skb)) &&
-		!skb_at_gro_remcsum_start(skb) &&
+		skb_checksum_start_offset(skb) < offset) &&
+		!skb_at_gro_remcsum_start(skb, offset) &&
 		NAPI_GRO_CB(skb)->csum_cnt == 0 &&
 		(!zero_okay || check));
 }
 
 static inline __sum16 __skb_gro_checksum_validate_complete(struct sk_buff *skb,
-							   __wsum psum)
+							   __wsum psum,
+							   int offset)
 {
 	if (NAPI_GRO_CB(skb)->csum_valid &&
 	    !csum_fold(csum_add(psum, NAPI_GRO_CB(skb)->csum)))
@@ -275,7 +276,7 @@ static inline __sum16 __skb_gro_checksum_validate_complete(struct sk_buff *skb,
 
 	NAPI_GRO_CB(skb)->csum = psum;
 
-	return __skb_gro_checksum_complete(skb);
+	return __skb_gro_checksum_complete(skb, offset);
 }
 
 static inline void skb_gro_incr_csum_unnecessary(struct sk_buff *skb)
@@ -292,27 +293,33 @@ static inline void skb_gro_incr_csum_unnecessary(struct sk_buff *skb)
 	}
 }
 
+static inline __wsum gro_null_compute_pseudo(struct sk_buff *skb, int proto,
+					     int off, int nh)
+{
+	return 0;
+}
+
 #define __skb_gro_checksum_validate(skb, proto, zero_okay, check,	\
-				    compute_pseudo)			\
+				    compute_pseudo, off, nh)		\
 ({									\
 	__sum16 __ret = 0;						\
-	if (__skb_gro_checksum_validate_needed(skb, zero_okay, check))	\
+	if (__skb_gro_checksum_validate_needed(skb, zero_okay, check, off)) \
 		__ret = __skb_gro_checksum_validate_complete(skb,	\
-				compute_pseudo(skb, proto));		\
+				compute_pseudo(skb, proto, off, nh), off);  \
 	if (!__ret)							\
 		skb_gro_incr_csum_unnecessary(skb);			\
 	__ret;								\
 })
 
-#define skb_gro_checksum_validate(skb, proto, compute_pseudo)		\
-	__skb_gro_checksum_validate(skb, proto, false, 0, compute_pseudo)
+#define skb_gro_checksum_validate(skb, proto, compute_pseudo, off, nh)	\
+	__skb_gro_checksum_validate(skb, proto, false, 0, compute_pseudo, off, nh)
 
 #define skb_gro_checksum_validate_zero_check(skb, proto, check,		\
-					     compute_pseudo)		\
-	__skb_gro_checksum_validate(skb, proto, true, check, compute_pseudo)
+					     compute_pseudo, off, nh)	\
+	__skb_gro_checksum_validate(skb, proto, true, check, compute_pseudo, off, nh)
 
 #define skb_gro_checksum_simple_validate(skb)				\
-	__skb_gro_checksum_validate(skb, 0, false, 0, null_compute_pseudo)
+	__skb_gro_checksum_validate(skb, 0, false, 0, gro_null_compute_pseudo, 0, 0)
 
 static inline bool __skb_gro_checksum_convert_check(struct sk_buff *skb)
 {
@@ -327,11 +334,11 @@ static inline void __skb_gro_checksum_convert(struct sk_buff *skb,
 	NAPI_GRO_CB(skb)->csum_valid = 1;
 }
 
-#define skb_gro_checksum_try_convert(skb, proto, compute_pseudo)	\
+#define skb_gro_checksum_try_convert(skb, proto, compute_pseudo, off, nh) \
 do {									\
 	if (__skb_gro_checksum_convert_check(skb))			\
 		__skb_gro_checksum_convert(skb, 			\
-					   compute_pseudo(skb, proto));	\
+					   compute_pseudo(skb, proto, off, nh)); \
 } while (0)
 
 struct gro_remcsum {
@@ -492,12 +499,12 @@ static inline struct udphdr *udp_gro_udphdr(struct sk_buff *skb)
 }
 
 static inline __wsum ip6_gro_compute_pseudo(const struct sk_buff *skb,
-					    int proto)
+					    int proto, int offset, int nh)
 {
-	const struct ipv6hdr *iph = skb_gro_network_header_deprecated(skb);
+	const struct ipv6hdr *iph = skb_gro_pulled_header(skb, offset, nh);
 
 	return ~csum_unfold(csum_ipv6_magic(&iph->saddr, &iph->daddr,
-					    skb_gro_len_deprecated(skb), proto, 0));
+					    skb_gro_len(skb, offset), proto, 0));
 }
 
 static inline int inet_gro_flush(const struct iphdr *iph, const struct iphdr *iph2,

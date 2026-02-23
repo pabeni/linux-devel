@@ -146,11 +146,12 @@ int udp6_gro_receive(struct list_head *head, struct sk_buff *skb, int offset,
 		goto skip;
 
 	if (skb_gro_checksum_validate_zero_check(skb, IPPROTO_UDP, uh->check,
-						 ip6_gro_compute_pseudo))
+						 ip6_gro_compute_pseudo,
+						 offset, nh))
 		goto flush;
 	else if (uh->check)
 		skb_gro_checksum_try_convert(skb, IPPROTO_UDP,
-					     ip6_gro_compute_pseudo);
+					     ip6_gro_compute_pseudo, offset, nh);
 
 skip:
 	if (static_branch_unlikely(&udpv6_encap_needed_key))

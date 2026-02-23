@@ -51,7 +51,7 @@ static __always_inline int tcp6_gro_receive(struct list_head *head,
 	/* Don't bother verifying checksum if we're going to flush anyway. */
 	if (!NAPI_GRO_CB(skb)->flush &&
 	    skb_gro_checksum_validate(skb, IPPROTO_TCP,
-				      ip6_gro_compute_pseudo))
+				      ip6_gro_compute_pseudo, offset, nh))
 		goto flush;
 
 	th = tcp_gro_pull_header(skb);

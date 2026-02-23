@@ -424,7 +424,7 @@ int tcp4_gro_receive(struct list_head *head, struct sk_buff *skb, int offset,
 	/* Don't bother verifying checksum if we're going to flush anyway. */
 	if (!NAPI_GRO_CB(skb)->flush &&
 	    skb_gro_checksum_validate(skb, IPPROTO_TCP,
-				      inet_gro_compute_pseudo))
+				      inet_gro_compute_pseudo, offset, nh))
 		goto flush;
 
 	th = tcp_gro_pull_header(skb);

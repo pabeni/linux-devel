@@ -887,11 +887,12 @@ int udp4_gro_receive(struct list_head *head, struct sk_buff *skb,
 		goto skip;
 
 	if (skb_gro_checksum_validate_zero_check(skb, IPPROTO_UDP, uh->check,
-						 inet_gro_compute_pseudo))
+						 inet_gro_compute_pseudo,
+						 offset, nh))
 		goto flush;
 	else if (uh->check)
 		skb_gro_checksum_try_convert(skb, IPPROTO_UDP,
-					     inet_gro_compute_pseudo);
+					     inet_gro_compute_pseudo, offset, nh);
 skip:
 	if (static_branch_unlikely(&udp_encap_needed_key))
 		sk = udp4_gro_lookup_skb(skb, uh->source, uh->dest);

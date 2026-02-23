@@ -781,12 +781,12 @@ EXPORT_SYMBOL(napi_gro_frags);
 /* Compute the checksum from gro_offset and return the folded value
  * after adding in any pseudo checksum.
  */
-__sum16 __skb_gro_checksum_complete(struct sk_buff *skb)
+__sum16 __skb_gro_checksum_complete(struct sk_buff *skb, int offset)
 {
 	__wsum wsum;
 	__sum16 sum;
 
-	wsum = skb_checksum(skb, skb_gro_offset(skb), skb_gro_len_deprecated(skb), 0);
+	wsum = skb_checksum(skb, offset, skb_gro_len(skb, offset), 0);
 
 	/* NAPI_GRO_CB(skb)->csum holds pseudo checksum */
 	sum = csum_fold(csum_add(NAPI_GRO_CB(skb)->csum, wsum));
