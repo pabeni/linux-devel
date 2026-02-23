@@ -21,10 +21,11 @@
 #include "ip6_offload.h"
 #include "tcpv6_offload.c"
 
-static int ipv6_gro_pull_exthdrs(struct sk_buff *skb, int off, int proto)
+static int ipv6_gro_pull_exthdrs(struct sk_buff *skb, int *offset, int proto)
 {
 	const struct net_offload *ops = NULL;
 	struct ipv6_opt_hdr *opth;
+	int off = *offset;
 
 	for (;;) {
 		int len;
@@ -51,7 +52,7 @@ static int ipv6_gro_pull_exthdrs(struct sk_buff *skb, int off, int proto)
 		off += len;
 	}
 
-	skb_gro_pull(skb, off - skb_gro_receive_network_offset(skb));
+	*offset = off;
 	return proto;
 }
 
@@ -201,48 +202,39 @@ static int ipv6_exthdrs_len(struct ipv6hdr *iph,
 }
 
 INDIRECT_CALLABLE_SCOPE int ipv6_gro_receive(struct list_head *head,
-					     struct sk_buff *skb, int offset)
+					     struct sk_buff *skb, int off)
 {
 	const struct net_offload *ops;
-	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
 	struct ipv6hdr *iph;
 	unsigned int nlen;
 	unsigned int hlen;
-	unsigned int off;
 	u16 flush = 1;
 	int proto;
 
-	off = skb_gro_offset(skb);
 	hlen = off + sizeof(*iph);
 	iph = skb_gro_header(skb, hlen, off);
 	if (unlikely(!iph))
 		goto out;
-
-	NAPI_GRO_CB(skb)->network_offsets[NAPI_GRO_CB(skb)->encap_mark] = off;
 
 	flush += ntohs(iph->payload_len) != skb->len - hlen;
 
 	proto = iph->nexthdr;
 	ops = rcu_dereference(inet6_offloads[proto]);
 	if (!ops || !ops->callbacks.gro_receive) {
-		proto = ipv6_gro_pull_exthdrs(skb, hlen, proto);
+		proto = ipv6_gro_pull_exthdrs(skb, &hlen, proto);
 
 		ops = rcu_dereference(inet6_offloads[proto]);
 		if (!ops || !ops->callbacks.gro_receive)
 			goto out;
 
-		iph = skb_gro_network_header_deprecated(skb);
-	} else {
-		skb_gro_pull(skb, sizeof(*iph));
+		iph = skb_gro_pulled_header(skb, hlen, off);
 	}
-
-	skb_set_transport_header(skb, skb_gro_offset(skb));
 
 	NAPI_GRO_CB(skb)->proto = proto;
 
 	flush--;
-	nlen = skb_gro_offset(skb) - off;
+	nlen = hlen - off;
 
 	list_for_each_entry(p, head, list) {
 		const struct ipv6hdr *iph2;
@@ -294,7 +286,7 @@ not_same_flow:
 	else
 		off = ops->callbacks.gro_receive(head, skb, hlen, off);
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, off, flush);
 
 	return off;
 }
@@ -334,28 +326,32 @@ INDIRECT_CALLABLE_SCOPE int ipv6_gro_complete(struct sk_buff *skb, int nhoff)
 	const struct net_offload *ops;
 	struct ipv6hdr *iph;
 	int err = -ENOSYS;
+	int thoff;
 
 	if (skb->encapsulation) {
 		skb_set_inner_protocol(skb, cpu_to_be16(ETH_P_IPV6));
 		skb_set_inner_network_header(skb, nhoff);
+	} else {
+		skb_set_network_header(skb, nhoff);
 	}
 
 	iph = (struct ipv6hdr *)(skb->data + nhoff);
 	ipv6_set_payload_len(iph, skb->len - nhoff - sizeof(*iph));
 
-	nhoff += sizeof(*iph) + ipv6_exthdrs_len(iph, &ops);
+	thoff = nhoff + sizeof(*iph) + ipv6_exthdrs_len(iph, &ops);
+	skb_set_transport_header(skb, thoff);
 
 	if (likely(ops == &net_hotdata.tcpv6_offload))
-		return tcp6_gro_complete(skb, nhoff, 0);
+		return tcp6_gro_complete(skb, thoff, nhoff);
 #if IS_BUILTIN(CONFIG_IPV6)
 	if (ops == &net_hotdata.udpv6_offload)
-		return udp6_gro_complete(skb, nhoff, 0);
+		return udp6_gro_complete(skb, thoff, nhoff);
 #endif
 
 	if (WARN_ON(!ops || !ops->callbacks.gro_complete))
 		goto out;
 
-	err = ops->callbacks.gro_complete(skb, nhoff, 0);
+	err = ops->callbacks.gro_complete(skb, thoff, nhoff);
 
 out:
 	return err;

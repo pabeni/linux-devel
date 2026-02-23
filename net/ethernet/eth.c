@@ -393,16 +393,14 @@ EXPORT_SYMBOL(sysfs_format_mac);
 int eth_gro_receive(struct list_head *head, struct sk_buff *skb, int off)
 {
 	const struct packet_offload *ptype;
-	unsigned int hlen, off_eth;
-	struct sk_buff *pp = NULL;
 	struct ethhdr *eh, *eh2;
 	struct sk_buff *p;
+	unsigned int hlen;
 	__be16 type;
 	int flush = 1;
 
-	off_eth = skb_gro_offset(skb);
-	hlen = off_eth + sizeof(*eh);
-	eh = skb_gro_header(skb, hlen, off_eth);
+	hlen = off + sizeof(*eh);
+	eh = skb_gro_header(skb, hlen, off);
 	if (unlikely(!eh))
 		goto out;
 
@@ -412,7 +410,7 @@ int eth_gro_receive(struct list_head *head, struct sk_buff *skb, int off)
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		eh2 = (struct ethhdr *)(p->data + off_eth);
+		eh2 = (struct ethhdr *)(p->data + off);
 		if (compare_ether_header(eh, eh2)) {
 			NAPI_GRO_CB(p)->same_flow = 0;
 			continue;
@@ -427,15 +425,14 @@ int eth_gro_receive(struct list_head *head, struct sk_buff *skb, int off)
 		goto out;
 	}
 
-	skb_gro_pull(skb, sizeof(*eh));
 	skb_gro_postpull_rcsum(skb, eh, sizeof(*eh));
 
 	off = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
 					     ipv6_gro_receive, inet_gro_receive,
-					     head, skb, off + sizeof(*eh));
+					     head, skb, hlen);
 
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, off, flush);
 
 	return off;
 }

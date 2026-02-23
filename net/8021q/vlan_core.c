@@ -465,20 +465,16 @@ static int vlan_gro_receive(struct list_head *head,
 			    struct sk_buff *skb, int off)
 {
 	const struct packet_offload *ptype;
-	unsigned int hlen, off_vlan;
-	struct sk_buff *pp = NULL;
 	struct vlan_hdr *vhdr;
 	struct sk_buff *p;
+	unsigned int hlen;
 	__be16 type;
 	int flush = 1;
 
-	off_vlan = skb_gro_offset(skb);
-	hlen = off_vlan + sizeof(*vhdr);
-	vhdr = skb_gro_header(skb, hlen, off_vlan);
+	hlen = off + sizeof(*vhdr);
+	vhdr = skb_gro_header(skb, hlen, off);
 	if (unlikely(!vhdr))
 		goto out;
-
-	NAPI_GRO_CB(skb)->network_offsets[NAPI_GRO_CB(skb)->encap_mark] = hlen;
 
 	type = vhdr->h_vlan_encapsulated_proto;
 
@@ -494,20 +490,19 @@ static int vlan_gro_receive(struct list_head *head,
 		if (!NAPI_GRO_CB(p)->same_flow)
 			continue;
 
-		vhdr2 = (struct vlan_hdr *)(p->data + off_vlan);
+		vhdr2 = (struct vlan_hdr *)(p->data + off);
 		if (compare_vlan_header(vhdr, vhdr2))
 			NAPI_GRO_CB(p)->same_flow = 0;
 	}
 
-	skb_gro_pull(skb, sizeof(*vhdr));
 	skb_gro_postpull_rcsum(skb, vhdr, sizeof(*vhdr));
 
 	off = indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
 					     ipv6_gro_receive, inet_gro_receive,
-					     head, skb, off + sizeof(*vhdr));
+					     head, skb, hlen);
 
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, off, flush);
 
 	return off;
 }

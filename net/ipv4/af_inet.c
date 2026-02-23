@@ -1465,18 +1465,15 @@ static struct sk_buff *ipip_gso_segment(struct sk_buff *skb,
 	return inet_gso_segment(skb, features);
 }
 
-int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset)
+int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int off)
 {
 	const struct net_offload *ops;
-	struct sk_buff *pp = NULL;
 	const struct iphdr *iph;
 	struct sk_buff *p;
 	unsigned int hlen;
-	unsigned int off;
 	int flush = 1;
 	int proto;
 
-	off = skb_gro_offset(skb);
 	hlen = off + sizeof(*iph);
 	iph = skb_gro_header(skb, hlen, off);
 	if (unlikely(!iph))
@@ -1498,7 +1495,7 @@ int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset)
 		goto out;
 
 	NAPI_GRO_CB(skb)->proto = proto;
-	flush = (u16)((ntohl(*(__be32 *)iph) ^ skb_gro_len_deprecated(skb)) | (ntohl(*(__be32 *)&iph->id) & ~IP_DF));
+	flush = (u16)((ntohl(*(__be32 *)iph) ^ skb_gro_len(skb, off)) | (ntohl(*(__be32 *)&iph->id) & ~IP_DF));
 
 	list_for_each_entry(p, head, list) {
 		struct iphdr *iph2;
@@ -1521,20 +1518,16 @@ int inet_gro_receive(struct list_head *head, struct sk_buff *skb, int offset)
 	}
 
 	NAPI_GRO_CB(skb)->flush |= flush;
-	NAPI_GRO_CB(skb)->network_offsets[NAPI_GRO_CB(skb)->encap_mark] = off;
 
 	/* Note : No need to call skb_gro_postpull_rcsum() here,
 	 * as we already checked checksum over ipv4 header was 0
 	 */
-	skb_gro_pull(skb, sizeof(*iph));
-	skb_set_transport_header(skb, skb_gro_offset(skb));
-
 	off = indirect_call_gro_receive(tcp4_gro_receive, udp4_gro_receive,
-				       ops->callbacks.gro_receive, head, skb,
-				       hlen, off);
+				        ops->callbacks.gro_receive, head, skb,
+				        hlen, off);
 
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, off, flush);
 
 	return off;
 }
@@ -1603,8 +1596,11 @@ int inet_gro_complete(struct sk_buff *skb, int nhoff)
 	if (skb->encapsulation) {
 		skb_set_inner_protocol(skb, cpu_to_be16(ETH_P_IP));
 		skb_set_inner_network_header(skb, nhoff);
+	} else {
+		skb_set_network_header(skb, nhoff);
 	}
 
+	skb_set_transport_header(skb, nhoff + sizeof(*iph));
 	iph_set_totlen(iph, skb->len - nhoff);
 	csum_replace2(&iph->check, totlen, iph->tot_len);
 
