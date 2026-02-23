@@ -507,7 +507,7 @@ static struct sk_buff *vlan_gro_receive(struct list_head *head,
 					    head, skb);
 
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 
 	return pp;
 }

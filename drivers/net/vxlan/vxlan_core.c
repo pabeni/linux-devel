@@ -715,7 +715,7 @@ static struct sk_buff *vxlan_gro_receive(struct sock *sk,
 		pp = call_gro_receive(eth_gro_receive, head, skb);
 		flush = 0;
 	}
-	skb_gro_flush_final_remcsum(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
 	return pp;
 }
 
@@ -741,7 +741,7 @@ static struct sk_buff *vxlan_gpe_gro_receive(struct sock *sk,
 		flush = 0;
 	}
 out:
-	skb_gro_flush_final_remcsum(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
 	return pp;
 }
 

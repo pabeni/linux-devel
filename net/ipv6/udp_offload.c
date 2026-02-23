@@ -116,7 +116,7 @@ out:
 static struct sock *udp6_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
 					__be16 dport)
 {
-	const struct ipv6hdr *iph = skb_gro_network_header(skb);
+	const struct ipv6hdr *iph = skb_gro_network_header_deprecated(skb);
 	struct net *net = dev_net_rcu(skb->dev);
 	struct sock *sk;
 	int iif, sdif;

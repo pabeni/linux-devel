@@ -460,7 +460,7 @@ next_proto:
 	flush = 0;
 
 out:
-	skb_gro_flush_final_remcsum(skb, pp, flush, &grc);
+	skb_gro_flush_final_remcsum_deprecated(skb, pp, flush, &grc);
 
 	return pp;
 }

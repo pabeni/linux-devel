@@ -94,7 +94,7 @@ int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
 	struct skb_shared_info *pinfo, *skbinfo = skb_shinfo(skb);
 	unsigned int offset = skb_gro_offset(skb);
 	unsigned int headlen = skb_headlen(skb);
-	unsigned int len = skb_gro_len(skb);
+	unsigned int len = skb_gro_len_deprecated(skb);
 	unsigned int delta_truesize;
 	unsigned int new_truesize;
 	struct sk_buff *lp;
@@ -548,7 +548,7 @@ found_ptype:
 	NAPI_GRO_CB(skb)->age = jiffies;
 	NAPI_GRO_CB(skb)->last = skb;
 	if (!skb_is_gso(skb))
-		skb_shinfo(skb)->gso_size = skb_gro_len(skb);
+		skb_shinfo(skb)->gso_size = skb_gro_len_deprecated(skb);
 	list_add(&skb->list, &gro_list->list);
 	ret = GRO_HELD;
 ok:
@@ -782,7 +782,7 @@ __sum16 __skb_gro_checksum_complete(struct sk_buff *skb)
 	__wsum wsum;
 	__sum16 sum;
 
-	wsum = skb_checksum(skb, skb_gro_offset(skb), skb_gro_len(skb), 0);
+	wsum = skb_checksum(skb, skb_gro_offset(skb), skb_gro_len_deprecated(skb), 0);
 
 	/* NAPI_GRO_CB(skb)->csum holds pseudo checksum */
 	sum = csum_fold(csum_add(NAPI_GRO_CB(skb)->csum, wsum));

@@ -228,7 +228,7 @@ static struct sk_buff *gre_gro_receive(struct list_head *head,
 	flush = 0;
 
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 
 	return pp;
 }

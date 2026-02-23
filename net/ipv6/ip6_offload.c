@@ -232,7 +232,7 @@ INDIRECT_CALLABLE_SCOPE struct sk_buff *ipv6_gro_receive(struct list_head *head,
 		if (!ops || !ops->callbacks.gro_receive)
 			goto out;
 
-		iph = skb_gro_network_header(skb);
+		iph = skb_gro_network_header_deprecated(skb);
 	} else {
 		skb_gro_pull(skb, sizeof(*iph));
 	}
@@ -293,7 +293,7 @@ not_same_flow:
 	else
 		pp = ops->callbacks.gro_receive(head, skb);
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 
 	return pp;
 }

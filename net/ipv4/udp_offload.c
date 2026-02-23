@@ -718,7 +718,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 
 	/* Do not deal with padded or malicious packets, sorry ! */
 	ulen = ntohs(uh->len);
-	if (ulen <= sizeof(*uh) || ulen != skb_gro_len(skb)) {
+	if (ulen <= sizeof(*uh) || ulen != skb_gro_len_deprecated(skb)) {
 		NAPI_GRO_CB(skb)->flush = 1;
 		return NULL;
 	}
@@ -742,7 +742,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 			return p;
 		}
 
-		flush = gro_receive_network_flush(uh, uh2, p);
+		flush = gro_receive_network_flush_deprecated(uh, uh2, p);
 
 		/* Terminate the flow on len mismatch or if it grow "too much".
 		 * Under small packet flood GRO count could elsewhere grow a lot
@@ -849,7 +849,7 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	pp = udp_tunnel_gro_rcv(sk, head, skb);
 
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 	return pp;
 }
 EXPORT_SYMBOL(udp_gro_receive);
@@ -857,7 +857,7 @@ EXPORT_SYMBOL(udp_gro_receive);
 static struct sock *udp4_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
 					__be16 dport)
 {
-	const struct iphdr *iph = skb_gro_network_header(skb);
+	const struct iphdr *iph = skb_gro_network_header_deprecated(skb);
 	struct net *net = dev_net_rcu(skb->dev);
 	struct sock *sk;
 	int iif, sdif;

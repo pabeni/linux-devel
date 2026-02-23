@@ -90,7 +90,10 @@ struct napi_gro_cb {
 	/* L3 offsets */
 	union {
 		struct {
-			u16 network_offset;
+			union {
+				u16 network_offset;
+				u16 outer_network_offset;
+			};
 			u16 inner_network_offset;
 		};
 		u16 network_offsets[2];
@@ -152,9 +155,14 @@ static inline unsigned int skb_gro_offset(const struct sk_buff *skb)
 	return NAPI_GRO_CB(skb)->data_offset;
 }
 
-static inline unsigned int skb_gro_len(const struct sk_buff *skb)
+static inline unsigned int skb_gro_len_deprecated(const struct sk_buff *skb)
 {
 	return skb->len - NAPI_GRO_CB(skb)->data_offset;
+}
+
+static inline unsigned int skb_gro_len(const struct sk_buff *skb, int offset)
+{
+	return skb->len - offset;
 }
 
 static inline void skb_gro_pull(struct sk_buff *skb, unsigned int len)
@@ -199,7 +207,7 @@ static inline int skb_gro_receive_network_offset(const struct sk_buff *skb)
 	return NAPI_GRO_CB(skb)->network_offsets[NAPI_GRO_CB(skb)->encap_mark];
 }
 
-static inline void *skb_gro_network_header(const struct sk_buff *skb)
+static inline void *skb_gro_network_header_deprecated(const struct sk_buff *skb)
 {
 	if (skb_gro_may_pull(skb, skb_gro_offset(skb)))
 		return skb_gro_header_fast(skb, skb_gro_receive_network_offset(skb));
@@ -207,13 +215,22 @@ static inline void *skb_gro_network_header(const struct sk_buff *skb)
 	return skb->data + skb_gro_receive_network_offset(skb);
 }
 
+static inline void *skb_gro_pulled_header(const struct sk_buff *skb,
+					   int hlen, int offset)
+{
+	if (skb_gro_may_pull(skb, hlen))
+		return skb_gro_header_fast(skb, offset);
+
+	return skb->data + offset;
+}
+
 static inline __wsum inet_gro_compute_pseudo(const struct sk_buff *skb,
 					     int proto)
 {
-	const struct iphdr *iph = skb_gro_network_header(skb);
+	const struct iphdr *iph = skb_gro_network_header_deprecated(skb);
 
 	return csum_tcpudp_nofold(iph->saddr, iph->daddr,
-				  skb_gro_len(skb), proto, 0);
+				  skb_gro_len_deprecated(skb), proto, 0);
 }
 
 static inline void skb_gro_postpull_rcsum(struct sk_buff *skb,
@@ -376,15 +393,30 @@ static inline void skb_gro_remcsum_cleanup(struct sk_buff *skb,
 }
 
 #ifdef CONFIG_XFRM_OFFLOAD
-static inline void skb_gro_flush_final(struct sk_buff *skb, struct sk_buff *pp, int flush)
+static inline void skb_gro_flush_final(struct sk_buff *skb, int off, int flush)
+{
+	if (off != -EINPROGRESS)
+		NAPI_GRO_CB(skb)->flush |= flush;
+}
+static inline void skb_gro_flush_final_remcsum(struct sk_buff *skb,
+					       int off, int flush,
+					       struct gro_remcsum *grc)
+{
+	if (off != -EINPROGRESS) {
+		NAPI_GRO_CB(skb)->flush |= flush;
+		skb_gro_remcsum_cleanup(skb, grc);
+		skb->remcsum_offload = 0;
+	}
+}
+static inline void skb_gro_flush_final_deprecated(struct sk_buff *skb, struct sk_buff *pp, int flush)
 {
 	if (PTR_ERR(pp) != -EINPROGRESS)
 		NAPI_GRO_CB(skb)->flush |= flush;
 }
-static inline void skb_gro_flush_final_remcsum(struct sk_buff *skb,
-					       struct sk_buff *pp,
-					       int flush,
-					       struct gro_remcsum *grc)
+static inline void skb_gro_flush_final_remcsum_deprecated(struct sk_buff *skb,
+							  struct sk_buff *pp,
+							  int flush,
+							  struct gro_remcsum *grc)
 {
 	if (PTR_ERR(pp) != -EINPROGRESS) {
 		NAPI_GRO_CB(skb)->flush |= flush;
@@ -393,14 +425,26 @@ static inline void skb_gro_flush_final_remcsum(struct sk_buff *skb,
 	}
 }
 #else
-static inline void skb_gro_flush_final(struct sk_buff *skb, struct sk_buff *pp, int flush)
+static inline void skb_gro_flush_final(struct sk_buff *skb, int off, int flush)
 {
 	NAPI_GRO_CB(skb)->flush |= flush;
 }
 static inline void skb_gro_flush_final_remcsum(struct sk_buff *skb,
-					       struct sk_buff *pp,
-					       int flush,
+					       int off, int flush,
 					       struct gro_remcsum *grc)
+{
+	NAPI_GRO_CB(skb)->flush |= flush;
+	skb_gro_remcsum_cleanup(skb, grc);
+	skb->remcsum_offload = 0;
+}
+static inline void skb_gro_flush_final_deprecated(struct sk_buff *skb, struct sk_buff *pp, int flush)
+{
+	NAPI_GRO_CB(skb)->flush |= flush;
+}
+static inline void skb_gro_flush_final_remcsum_deprecated(struct sk_buff *skb,
+							  struct sk_buff *pp,
+							  int flush,
+							  struct gro_remcsum *grc)
 {
 	NAPI_GRO_CB(skb)->flush |= flush;
 	skb_gro_remcsum_cleanup(skb, grc);
@@ -448,10 +492,10 @@ static inline struct udphdr *udp_gro_udphdr(struct sk_buff *skb)
 static inline __wsum ip6_gro_compute_pseudo(const struct sk_buff *skb,
 					    int proto)
 {
-	const struct ipv6hdr *iph = skb_gro_network_header(skb);
+	const struct ipv6hdr *iph = skb_gro_network_header_deprecated(skb);
 
 	return ~csum_unfold(csum_ipv6_magic(&iph->saddr, &iph->daddr,
-					    skb_gro_len(skb), proto, 0));
+					    skb_gro_len_deprecated(skb), proto, 0));
 }
 
 static inline int inet_gro_flush(const struct iphdr *iph, const struct iphdr *iph2,
@@ -499,8 +543,9 @@ static inline int __gro_receive_network_flush(const void *th, const void *th2,
 		return inet_gro_flush(nh, nh2, p, inner);
 }
 
-static inline int gro_receive_network_flush(const void *th, const void *th2,
-					    struct sk_buff *p)
+static inline int gro_receive_network_flush_deprecated(const void *th,
+						       const void *th2,
+						       struct sk_buff *p)
 {
 	int off = skb_transport_offset(p);
 	int flush;
@@ -508,6 +553,21 @@ static inline int gro_receive_network_flush(const void *th, const void *th2,
 	flush = __gro_receive_network_flush(th, th2, p, off - NAPI_GRO_CB(p)->network_offset, false);
 	if (NAPI_GRO_CB(p)->encap_mark)
 		flush |= __gro_receive_network_flush(th, th2, p, off - NAPI_GRO_CB(p)->inner_network_offset, true);
+
+	return flush;
+}
+
+static inline int gro_receive_network_flush(const void *th, const void *th2,
+					    struct sk_buff *p, int off, int nh)
+{
+	int flush;
+
+	flush = __gro_receive_network_flush(th, th2, p, off - nh, NAPI_GRO_CB(p)->encap_mark);
+	if (NAPI_GRO_CB(p)->encap_mark) {
+		int delta = off - NAPI_GRO_CB(p)->outer_network_offset;
+
+		flush |= __gro_receive_network_flush(th, th2, p, delta, false);
+	}
 
 	return flush;
 }

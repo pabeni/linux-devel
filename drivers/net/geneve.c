@@ -553,7 +553,7 @@ geneve_opt_gro_hint_validate_csum(const struct sk_buff *skb,
 	/* Compute the complete checksum up to the nested transport. */
 	plen = gh_len + gro_hint->nested_tp_offset;
 	csum = csum_sub(NAPI_GRO_CB(skb)->csum, csum_partial(gh, plen, 0));
-	nested_len = skb_gro_len(skb) - plen;
+	nested_len = skb_gro_len_deprecated(skb) - plen;
 
 	/* Compute the nested pseudo header csum. */
 	ipv6h = nested + gro_hint->nested_nh_offset;
@@ -938,7 +938,7 @@ static struct sk_buff *geneve_gro_receive(struct sock *sk,
 	flush = 0;
 
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 
 	return pp;
 }

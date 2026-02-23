@@ -1498,7 +1498,7 @@ struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb)
 		goto out;
 
 	NAPI_GRO_CB(skb)->proto = proto;
-	flush = (u16)((ntohl(*(__be32 *)iph) ^ skb_gro_len(skb)) | (ntohl(*(__be32 *)&iph->id) & ~IP_DF));
+	flush = (u16)((ntohl(*(__be32 *)iph) ^ skb_gro_len_deprecated(skb)) | (ntohl(*(__be32 *)&iph->id) & ~IP_DF));
 
 	list_for_each_entry(p, head, list) {
 		struct iphdr *iph2;
@@ -1533,7 +1533,7 @@ struct sk_buff *inet_gro_receive(struct list_head *head, struct sk_buff *skb)
 				       ops->callbacks.gro_receive, head, skb);
 
 out:
-	skb_gro_flush_final(skb, pp, flush);
+	skb_gro_flush_final_deprecated(skb, pp, flush);
 
 	return pp;
 }

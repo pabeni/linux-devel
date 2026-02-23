@@ -296,7 +296,7 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	int flush = 1;
 	int i;
 
-	len = skb_gro_len(skb);
+	len = skb_gro_len_deprecated(skb);
 	flags = tcp_flag_word(th);
 
 	p = tcp_gro_lookup(head, th);
@@ -311,7 +311,7 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 		flush |= *(u32 *)((u8 *)th + i) ^
 			 *(u32 *)((u8 *)th2 + i);
 
-	flush |= gro_receive_network_flush(th, th2, p);
+	flush |= gro_receive_network_flush_deprecated(th, th2, p);
 
 	mss = skb_shinfo(p)->gso_size;
 
@@ -324,7 +324,7 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	else
 		flush |= (len - 1) >= mss;
 
-	flush |= (ntohl(th2->seq) + skb_gro_len(p)) ^ ntohl(th->seq);
+	flush |= (ntohl(th2->seq) + skb_gro_len_deprecated(p)) ^ ntohl(th->seq);
 	flush |= skb_cmp_decrypted(p, skb);
 
 	if (unlikely(NAPI_GRO_CB(p)->is_flist)) {
@@ -405,7 +405,7 @@ static void tcp4_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 	}
 
 	inet_get_iif_sdif(skb, &iif, &sdif);
-	iph = skb_gro_network_header(skb);
+	iph = skb_gro_network_header_deprecated(skb);
 	net = dev_net_rcu(skb->dev);
 	sk = __inet_lookup_established(net, iph->saddr, th->source,
 				       iph->daddr, ntohs(th->dest),

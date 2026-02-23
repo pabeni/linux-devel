@@ -31,7 +31,7 @@ static void tcp6_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 	}
 
 	inet6_get_iif_sdif(skb, &iif, &sdif);
-	hdr = skb_gro_network_header(skb);
+	hdr = skb_gro_network_header_deprecated(skb);
 	net = dev_net_rcu(skb->dev);
 	sk = __inet6_lookup_established(net, &hdr->saddr, th->source,
 					&hdr->daddr, ntohs(th->dest),
