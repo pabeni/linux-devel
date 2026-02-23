@@ -675,12 +675,11 @@ static inline void inet6_get_iif_sdif(const struct sk_buff *skb, int *iif, int *
 struct packet_offload *gro_find_receive_by_type(__be16 type);
 struct packet_offload *gro_find_complete_by_type(__be16 type);
 
-static inline struct tcphdr *tcp_gro_pull_header(struct sk_buff *skb)
+static inline struct tcphdr *tcp_gro_pull_header(struct sk_buff *skb, int off)
 {
-	unsigned int thlen, hlen, off;
+	unsigned int thlen, hlen;
 	struct tcphdr *th;
 
-	off = skb_gro_offset(skb);
 	hlen = off + sizeof(*th);
 	th = skb_gro_header(skb, hlen, off);
 	if (unlikely(!th))
@@ -696,8 +695,6 @@ static inline struct tcphdr *tcp_gro_pull_header(struct sk_buff *skb)
 		if (unlikely(!th))
 			return NULL;
 	}
-
-	skb_gro_pull(skb, thlen);
 
 	return th;
 }

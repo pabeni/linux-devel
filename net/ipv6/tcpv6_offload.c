@@ -15,7 +15,7 @@
 #include "ip6_offload.h"
 
 static void tcp6_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
-				    struct tcphdr *th)
+				    struct tcphdr *th, int offset, int nh)
 {
 #if IS_ENABLED(CONFIG_IPV6)
 	const struct ipv6hdr *hdr;
@@ -24,14 +24,14 @@ static void tcp6_check_fraglist_gro(struct list_head *head, struct sk_buff *skb,
 	struct net *net;
 	int iif, sdif;
 
-	p = tcp_gro_lookup(head, th);
+	p = tcp_gro_lookup(head, th, offset);
 	if (p) {
 		NAPI_GRO_CB(skb)->is_flist = NAPI_GRO_CB(p)->is_flist;
 		return;
 	}
 
 	inet6_get_iif_sdif(skb, &iif, &sdif);
-	hdr = skb_gro_network_header_deprecated(skb);
+	hdr = skb_gro_pulled_header(skb, offset, nh);
 	net = dev_net_rcu(skb->dev);
 	sk = __inet6_lookup_established(net, &hdr->saddr, th->source,
 					&hdr->daddr, ntohs(th->dest),
@@ -54,15 +54,14 @@ static __always_inline int tcp6_gro_receive(struct list_head *head,
 				      ip6_gro_compute_pseudo, offset, nh))
 		goto flush;
 
-	th = tcp_gro_pull_header(skb);
+	th = tcp_gro_pull_header(skb, offset);
 	if (!th)
 		goto flush;
 
 	if (unlikely(skb->dev->features & NETIF_F_GRO_FRAGLIST))
-		tcp6_check_fraglist_gro(head, skb, th);
+		tcp6_check_fraglist_gro(head, skb, th, offset, nh);
 
-	tcp_gro_receive(head, skb, th);
-	return 0;
+	return tcp_gro_receive(head, skb, th, offset, nh);
 
 flush:
 	NAPI_GRO_CB(skb)->flush = 1;
@@ -72,8 +71,7 @@ flush:
 static __always_inline int tcp6_gro_complete(struct sk_buff *skb, int thoff,
 					     int nhoff)
 {
-	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
-	const struct ipv6hdr *iph = (struct ipv6hdr *)(skb->data + offset);
+	const struct ipv6hdr *iph = (struct ipv6hdr *)(skb->data + nhoff);
 	struct tcphdr *th = tcp_hdr(skb);
 
 	if (unlikely(NAPI_GRO_CB(skb)->is_flist)) {
