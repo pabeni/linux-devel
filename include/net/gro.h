@@ -482,16 +482,16 @@ int udp6_gro_complete(struct sk_buff *, int, int);
 		INDIRECT_CALL_INET(cb, f2, f1, head, skb, offset);	\
 })
 
-struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
-				struct udphdr *uh, struct sock *sk);
-int udp_gro_complete(struct sk_buff *skb, int nhoff, udp_lookup_t lookup);
+int udp_gro_receive(struct list_head *head, struct sk_buff *skb,
+		    int off, int nh, struct sock *sk);
+int udp_gro_complete(struct sk_buff *skb, int thoff, int nh,
+		     udp_lookup_t lookup);
 
-static inline struct udphdr *udp_gro_udphdr(struct sk_buff *skb)
+static inline struct udphdr *udp_gro_udphdr(struct sk_buff *skb, int off)
 {
 	struct udphdr *uh;
-	unsigned int hlen, off;
+	unsigned int hlen;
 
-	off  = skb_gro_offset(skb);
 	hlen = off + sizeof(*uh);
 	uh   = skb_gro_header(skb, hlen, off);
 

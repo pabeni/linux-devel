@@ -113,10 +113,10 @@ out:
 	return segs;
 }
 
-static struct sock *udp6_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
-					__be16 dport)
+struct sock *udp6_gro_lookup_skb(const struct sk_buff *skb, __be16 sport,
+				 __be16 dport, int offset, int nh)
 {
-	const struct ipv6hdr *iph = skb_gro_network_header_deprecated(skb);
+	const struct ipv6hdr *iph = skb_gro_pulled_header(skb, offset, nh);
 	struct net *net = dev_net_rcu(skb->dev);
 	struct sock *sk;
 	int iif, sdif;
@@ -135,7 +135,7 @@ static struct sock *udp6_gro_lookup_skb(struct sk_buff *skb, __be16 sport,
 int udp6_gro_receive(struct list_head *head, struct sk_buff *skb, int offset,
 		     int nh)
 {
-	struct udphdr *uh = udp_gro_udphdr(skb);
+	struct udphdr *uh = udp_gro_udphdr(skb, offset);
 	struct sock *sk = NULL;
 
 	if (unlikely(!uh))
@@ -155,10 +155,9 @@ int udp6_gro_receive(struct list_head *head, struct sk_buff *skb, int offset,
 
 skip:
 	if (static_branch_unlikely(&udpv6_encap_needed_key))
-		sk = udp6_gro_lookup_skb(skb, uh->source, uh->dest);
+		sk = udp6_gro_lookup_skb(skb, uh->source, uh->dest, offset, nh);
 
-	udp_gro_receive(head, skb, uh, sk);
-	return 0;
+	return udp_gro_receive(head, skb, offset, nh, sk);
 
 flush:
 	NAPI_GRO_CB(skb)->flush = 1;
@@ -167,8 +166,7 @@ flush:
 
 int udp6_gro_complete(struct sk_buff *skb, int uhoff, int nhoff)
 {
-	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
-	const struct ipv6hdr *ipv6h = (struct ipv6hdr *)(skb->data + offset);
+	const struct ipv6hdr *ipv6h = (struct ipv6hdr *)(skb->data + nhoff);
 	struct udphdr *uh = (struct udphdr *)(skb->data + uhoff);
 
 	/* do fraglist only if there is no outer UDP encap (or we already processed it) */
@@ -187,7 +185,7 @@ int udp6_gro_complete(struct sk_buff *skb, int uhoff, int nhoff)
 		uh->check = ~udp_v6_check(skb->len - uhoff, &ipv6h->saddr,
 					  &ipv6h->daddr, 0);
 
-	return udp_gro_complete(skb, nhoff, udp6_lib_lookup_skb);
+	return udp_gro_complete(skb, uhoff, nhoff, udp6_gro_lookup_skb);
 }
 
 int __init udpv6_offload_init(void)

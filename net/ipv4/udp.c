@@ -754,21 +754,6 @@ static inline struct sock *__udp4_lib_lookup_skb(struct sk_buff *skb,
 				 inet_sdif(skb), udptable, skb);
 }
 
-struct sock *udp4_lib_lookup_skb(const struct sk_buff *skb,
-				 __be16 sport, __be16 dport)
-{
-	const u16 offset = NAPI_GRO_CB(skb)->network_offsets[skb->encapsulation];
-	const struct iphdr *iph = (struct iphdr *)(skb->data + offset);
-	struct net *net = dev_net(skb->dev);
-	int iif, sdif;
-
-	inet_get_iif_sdif(skb, &iif, &sdif);
-
-	return __udp4_lib_lookup(net, iph->saddr, sport,
-				 iph->daddr, dport, iif,
-				 sdif, net->ipv4.udp_table, NULL);
-}
-
 /* Must be called under rcu_read_lock().
  * Does increment socket refcount.
  */

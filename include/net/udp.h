@@ -276,7 +276,7 @@ static inline void udp_csum_pull_header(struct sk_buff *skb)
 }
 
 typedef struct sock *(*udp_lookup_t)(const struct sk_buff *skb, __be16 sport,
-				     __be16 dport);
+				     __be16 dport, int offset, int nh);
 
 void udp_v6_early_demux(struct sk_buff *skb);
 INDIRECT_CALLABLE_DECLARE(int udpv6_rcv(struct sk_buff *));
@@ -442,8 +442,6 @@ struct sock *__udp4_lib_lookup(const struct net *net, __be32 saddr,
 			       __be16 sport,
 			       __be32 daddr, __be16 dport, int dif, int sdif,
 			       struct udp_table *tbl, struct sk_buff *skb);
-struct sock *udp4_lib_lookup_skb(const struct sk_buff *skb,
-				 __be16 sport, __be16 dport);
 struct sock *udp6_lib_lookup(const struct net *net,
 			     const struct in6_addr *saddr, __be16 sport,
 			     const struct in6_addr *daddr, __be16 dport,
@@ -453,8 +451,8 @@ struct sock *__udp6_lib_lookup(const struct net *net,
 			       const struct in6_addr *daddr, __be16 dport,
 			       int dif, int sdif, struct udp_table *tbl,
 			       struct sk_buff *skb);
-struct sock *udp6_lib_lookup_skb(const struct sk_buff *skb,
-				 __be16 sport, __be16 dport);
+struct sock *udp6_gro_lookup_skb(const struct sk_buff *skb, __be16 sport,
+				 __be16 dport, int offset, int nh);
 int udp_read_skb(struct sock *sk, skb_read_actor_t recv_actor);
 
 /* UDP uses skb->dev_scratch to cache as much information as possible and avoid
