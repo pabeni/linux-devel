@@ -574,8 +574,8 @@ static inline int gro_receive_network_flush(const void *th, const void *th2,
 	return flush;
 }
 
-int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb);
-int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb);
+int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb, int offset);
+int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb, int offset);
 void __gro_flush(struct gro_node *gro, bool flush_old);
 
 static inline void gro_flush(struct gro_node *gro, bool flush_old)

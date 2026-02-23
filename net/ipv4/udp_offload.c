@@ -763,12 +763,12 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 					return NULL;
 				}
 				skb_set_network_header(skb, skb_gro_receive_network_offset(skb));
-				ret = skb_gro_receive_list(p, skb);
+				ret = skb_gro_receive_list(p, skb, 0);
 			} else {
 				skb_gro_postpull_rcsum(skb, uh,
 						       sizeof(struct udphdr));
 
-				ret = skb_gro_receive(p, skb);
+				ret = skb_gro_receive(p, skb, 0);
 			}
 		}
 

@@ -334,13 +334,13 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 		flush |= NAPI_GRO_CB(p)->count >= 64;
 		skb_set_network_header(skb, skb_gro_receive_network_offset(skb));
 
-		if (flush || skb_gro_receive_list(p, skb))
+		if (flush || skb_gro_receive_list(p, skb, 0))
 			mss = 1;
 
 		goto out_check_final;
 	}
 
-	if (flush || skb_gro_receive(p, skb)) {
+	if (flush || skb_gro_receive(p, skb, 0)) {
 		mss = 1;
 		goto out_check_final;
 	}

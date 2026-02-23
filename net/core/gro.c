@@ -89,7 +89,7 @@ void dev_remove_offload(struct packet_offload *po)
 EXPORT_SYMBOL(dev_remove_offload);
 
 
-int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
+int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb, int off)
 {
 	struct skb_shared_info *pinfo, *skbinfo = skb_shinfo(skb);
 	unsigned int offset = skb_gro_offset(skb);
@@ -222,7 +222,7 @@ done:
 	return 0;
 }
 
-int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb)
+int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb, int offset)
 {
 	if (unlikely(p->len + skb->len >= 65536))
 		return -E2BIG;
