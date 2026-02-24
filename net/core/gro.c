@@ -89,12 +89,11 @@ void dev_remove_offload(struct packet_offload *po)
 EXPORT_SYMBOL(dev_remove_offload);
 
 
-int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb, int off)
+int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb, int offset)
 {
 	struct skb_shared_info *pinfo, *skbinfo = skb_shinfo(skb);
-	unsigned int offset = skb_gro_offset(skb);
+	unsigned int len = skb_gro_len(skb, offset);
 	unsigned int headlen = skb_headlen(skb);
-	unsigned int len = skb_gro_len_deprecated(skb);
 	unsigned int delta_truesize;
 	unsigned int new_truesize;
 	struct sk_buff *lp;
@@ -232,7 +231,7 @@ int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb, int offset)
 	else
 		NAPI_GRO_CB(p)->last->next = skb;
 
-	skb_pull(skb, skb_gro_offset(skb));
+	skb_pull(skb, offset);
 
 	NAPI_GRO_CB(p)->last = skb;
 	NAPI_GRO_CB(p)->count++;
@@ -390,8 +389,6 @@ static inline void skb_gro_reset_offset(struct sk_buff *skb, u32 nhoff)
 	const skb_frag_t *frag0;
 	unsigned int headlen;
 
-	NAPI_GRO_CB(skb)->network_offset = 0;
-	NAPI_GRO_CB(skb)->data_offset = 0;
 	headlen = skb_headlen(skb);
 	NAPI_GRO_CB(skb)->frag0 = skb->data;
 	NAPI_GRO_CB(skb)->frag0_len = headlen;
@@ -433,9 +430,9 @@ static void gro_pull_from_frag0(struct sk_buff *skb, int grow)
 	}
 }
 
-static void gro_try_pull_from_frag0(struct sk_buff *skb)
+static void gro_try_pull_from_frag0(struct sk_buff *skb, int offset)
 {
-	int grow = skb_gro_offset(skb) - skb_headlen(skb);
+	int grow = offset - skb_headlen(skb);
 
 	if (grow > 0)
 		gro_pull_from_frag0(skb, grow);
@@ -487,7 +484,7 @@ static enum gro_result dev_gro_receive(struct gro_node *gro,
 	goto normal;
 
 found_ptype:
-	skb_set_network_header(skb, skb_gro_offset(skb));
+	skb_set_network_header(skb, offset);
 	skb_reset_mac_len(skb);
 	BUILD_BUG_ON(sizeof_field(struct napi_gro_cb, zeroed) != sizeof(u32));
 	BUILD_BUG_ON(!IS_ALIGNED(offsetof(struct napi_gro_cb, zeroed),
@@ -520,7 +517,7 @@ found_ptype:
 
 	rcu_read_unlock();
 
-	if (PTR_ERR(pp) == -EINPROGRESS) {
+	if (offset == -EINPROGRESS) {
 		ret = GRO_CONSUMED;
 		goto ok;
 	}
@@ -547,11 +544,11 @@ found_ptype:
 		gro_list->count++;
 
 	/* Must be called before setting NAPI_GRO_CB(skb)->{age|last} */
-	gro_try_pull_from_frag0(skb);
+	gro_try_pull_from_frag0(skb, offset);
 	NAPI_GRO_CB(skb)->age = jiffies;
 	NAPI_GRO_CB(skb)->last = skb;
 	if (!skb_is_gso(skb))
-		skb_shinfo(skb)->gso_size = skb_gro_len_deprecated(skb);
+		skb_shinfo(skb)->gso_size = skb_gro_len(skb, offset);
 	list_add(&skb->list, &gro_list->list);
 	ret = GRO_HELD;
 ok:
@@ -566,7 +563,7 @@ ok:
 
 normal:
 	ret = GRO_NORMAL;
-	gro_try_pull_from_frag0(skb);
+	gro_try_pull_from_frag0(skb, offset);
 	goto ok;
 }
 
@@ -719,7 +716,7 @@ static gro_result_t napi_frags_finish(struct napi_struct *napi,
 	return ret;
 }
 
-/* Upper GRO stack assumes network header starts at gro_offset=0
+/* Upper GRO stack assumes network header starts at offset=0
  * Drivers could call both napi_gro_frags() and napi_gro_receive()
  * We copy ethernet header into skb->data to have a common layout.
  */
