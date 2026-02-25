@@ -1541,6 +1541,7 @@ static int ipip_gro_receive(struct list_head *head,
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
+	NAPI_GRO_CB(skb)->outer_network_offset = nh;
 
 	return inet_gro_receive(head, skb, offset);
 }

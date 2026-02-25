@@ -120,13 +120,11 @@ out:
 }
 
 static int gre_gro_receive(struct list_head *head, struct sk_buff *skb,
-			   int offset, int nh)
+			   int off, int nh)
 {
-	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
 	const struct gre_base_hdr *greh;
 	unsigned int hlen, grehlen;
-	unsigned int off;
 	int flush = 1;
 	struct packet_offload *ptype;
 	__be16 type;
@@ -135,8 +133,8 @@ static int gre_gro_receive(struct list_head *head, struct sk_buff *skb,
 		goto out;
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
+	NAPI_GRO_CB(skb)->outer_network_offset = nh;
 
-	off = skb_gro_offset(skb);
 	hlen = off + sizeof(*greh);
 	greh = skb_gro_header(skb, hlen, off);
 	if (unlikely(!greh))
@@ -186,8 +184,7 @@ static int gre_gro_receive(struct list_head *head, struct sk_buff *skb,
 			goto out;
 
 		skb_gro_checksum_try_convert(skb, IPPROTO_GRE,
-					     gro_null_compute_pseudo,
-					     offset, nh);
+					     gro_null_compute_pseudo, off, nh);
 	}
 
 	list_for_each_entry(p, head, list) {
@@ -220,16 +217,14 @@ static int gre_gro_receive(struct list_head *head, struct sk_buff *skb,
 		}
 	}
 
-	skb_gro_pull(skb, grehlen);
-
-	/* Adjusted NAPI_GRO_CB(skb)->csum after skb_gro_pull()*/
+	/* Adjusted NAPI_GRO_CB(skb)->csum after gre hdr. */
 	skb_gro_postpull_rcsum(skb, greh, grehlen);
 
 	off = call_gro_receive(ptype->callbacks.gro_receive, head, skb, hlen);
 	flush = 0;
 
 out:
-	skb_gro_flush_final_deprecated(skb, pp, flush);
+	skb_gro_flush_final(skb, off, flush);
 
 	return off;
 }

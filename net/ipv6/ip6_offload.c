@@ -302,6 +302,7 @@ static int sit_ip6ip6_gro_receive(struct list_head *head,
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
+	NAPI_GRO_CB(skb)->outer_network_offset = nh;
 
 	return ipv6_gro_receive(head, skb, offset);
 }
@@ -317,6 +318,7 @@ static int ip4ip6_gro_receive(struct list_head *head,
 	}
 
 	NAPI_GRO_CB(skb)->encap_mark = 1;
+	NAPI_GRO_CB(skb)->outer_network_offset = nh;
 
 	return inet_gro_receive(head, skb, offset);
 }
