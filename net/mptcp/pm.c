@@ -907,14 +907,12 @@ static int mptcp_add_addr_len(int family, bool echo, bool port)
 	return len;
 }
 
-bool mptcp_pm_add_addr_signal(struct mptcp_sock *msk, int *size, int remaining,
-			      struct mptcp_addr_info *addr, bool *echo,
-			      bool *drop_ts)
+int mptcp_pm_add_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
+			     struct mptcp_addr_info *addr, bool *echo)
 {
 	bool skip_add_addr = false;
-	bool ret = false;
+	unsigned int len = 0;
 	u8 add_addr;
-	int len = 0;
 	u8 family;
 	bool port;
 
@@ -923,12 +921,6 @@ bool mptcp_pm_add_addr_signal(struct mptcp_sock *msk, int *size, int remaining,
 	/* double check after the lock is acquired */
 	if (!mptcp_pm_should_add_signal(msk))
 		goto out_unlock;
-
-	/* always drop every other options for pure ack ADD_ADDR; this is a
-	 * plain dup-ack from TCP perspective. The other MPTCP-relevant info,
-	 * if any, will be carried by the 'original' TCP ack
-	 */
-	len -= *size;
 
 	*echo = mptcp_pm_should_add_signal_echo(msk);
 	if (*echo) {
@@ -943,16 +935,9 @@ bool mptcp_pm_add_addr_signal(struct mptcp_sock *msk, int *size, int remaining,
 		family = msk->pm.local.family;
 	}
 
-	len += mptcp_add_addr_len(family, *echo, port);
+	len = mptcp_add_addr_len(family, *echo, port);
 	if (len > remaining) {
 		struct net *net = sock_net((struct sock *)msk);
-
-		if (*drop_ts && mptcp_add_addr_v6_port_drop_ts(net)) {
-			/* OK without TCP Timestamps? */
-			len -= TCPOLEN_TSTAMP_ALIGNED;
-			if (len <= remaining)
-				goto enough_space;
-		}
 
 		if (*echo) {
 			MPTCP_INC_STATS(net, MPTCP_MIB_ECHOADDTXDROP);
@@ -960,16 +945,8 @@ bool mptcp_pm_add_addr_signal(struct mptcp_sock *msk, int *size, int remaining,
 			skip_add_addr = true;
 			MPTCP_INC_STATS(net, MPTCP_MIB_ADDADDRTXDROP);
 		}
-		goto drop_signal_mark;
 	}
 
-	*drop_ts = false;
-
-enough_space:
-	ret = true;
-	*size = len;
-
-drop_signal_mark:
 	WRITE_ONCE(msk->pm.addr_signal, add_addr);
 
 out_unlock:
@@ -983,7 +960,7 @@ out_unlock:
 		mptcp_pm_announced_del_timer(msk, addr, true);
 		mptcp_pm_subflow_established(msk);
 	}
-	return ret;
+	return len;
 }
 
 static int mptcp_rm_addr_len(const struct mptcp_rm_list *rm_list)

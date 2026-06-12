@@ -69,8 +69,7 @@ struct mptcp_out_options {
 	u8 reset_reason:4,
 	   reset_transient:1,
 	   csum_reqd:1,
-	   allow_join_id0:1,
-	   drop_ts:1;
+	   allow_join_id0:1;
 	union {
 		struct {
 			u64 sndr_key;

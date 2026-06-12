@@ -660,16 +660,17 @@ static u64 add_addr_generate_hmac(u64 key1, u64 key2,
 	return get_unaligned_be64(&hmac[SHA256_DIGEST_SIZE - sizeof(u64)]);
 }
 
-static bool mptcp_established_options_add_addr(struct sock *sk,
-					       struct sk_buff *skb, int *size,
-					       unsigned int remaining,
-					       bool has_ts,
-					       struct mptcp_out_options *opts)
+static int mptcp_established_options_add_addr(struct sock *sk,
+					      struct sk_buff *skb,
+					      unsigned int remaining,
+					      struct tcp_out_options *topts)
 {
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
 	struct mptcp_sock *msk = mptcp_sk(subflow->conn);
+	struct mptcp_out_options *opts = &topts->mptcp;
+	struct net *net = sock_net(sk);
+	unsigned int max_space, size;
 	struct mptcp_addr_info addr;
-	bool drop_ts = has_ts;
 	bool echo;
 
 	/* add addr will strip the existing options, be sure to avoid breaking
@@ -677,15 +678,27 @@ static bool mptcp_established_options_add_addr(struct sock *sk,
 	 */
 	if (!mptcp_pm_should_add_signal(msk) ||
 	    (opts->suboptions & (OPTION_MPTCP_MPJ_ACK | OPTION_MPTCP_MPC_ACK)) ||
-	    !skb || !skb_is_tcp_pure_ack(skb) ||
-	    !mptcp_pm_add_addr_signal(msk, size, remaining, &addr, &echo,
-				      &drop_ts))
-		return false;
+	    !skb || !skb_is_tcp_pure_ack(skb))
+		return 0;
 
-	pr_debug("drop other suboptions\n");
+	/* Compute the maximum space available for the option, and let the PM
+	 * decide if adding it.
+	 */
+	max_space = remaining;
+	if (topts->options & OPTION_TS && mptcp_add_addr_v6_port_drop_ts(net))
+		max_space += TCPOLEN_TSTAMP_ALIGNED;
+	size = mptcp_pm_add_addr_signal(msk, max_space, &addr, &echo);
+	if (size)
+		return 0;
+
 	opts->suboptions = OPTION_MPTCP_ADD_ADDR;
-	opts->drop_ts = drop_ts;
 	opts->addr = addr;
+
+	/* Strip TS if needed to fit the large add-addr */
+	if (size > remaining) {
+		topts->options &= ~OPTION_TS;
+		size -= TCPOLEN_TSTAMP_ALIGNED;
+	}
 	if (!echo) {
 		MPTCP_INC_STATS(sock_net(sk), MPTCP_MIB_ADDADDRTX);
 		opts->ahmac = add_addr_generate_hmac(READ_ONCE(msk->local_key),
@@ -697,8 +710,7 @@ static bool mptcp_established_options_add_addr(struct sock *sk,
 	}
 	pr_debug("addr_id=%d, ahmac=%llu, echo=%d, port=%d\n",
 		 opts->addr.id, opts->ahmac, echo, ntohs(opts->addr.port));
-
-	return true;
+	return size;
 }
 
 static bool mptcp_established_options_rm_addr(struct sock *sk, int *size,
@@ -818,7 +830,7 @@ int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
 	struct mptcp_sock *msk = mptcp_sk(subflow->conn);
 	struct mptcp_out_options *opts = &topts->mptcp;
-	bool has_ts = topts->options & OPTION_TS;
+	unsigned int max_space = remaining;
 	int total_size = 0;
 	bool snd_data_fin;
 	bool ret = false;
@@ -869,13 +881,11 @@ int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
 
 	total_size += opt_size;
 	remaining -= opt_size;
-	opts->drop_ts = 0;
-	if (mptcp_established_options_add_addr(sk, skb, &opt_size, remaining,
-					       has_ts, opts)) {
-		total_size += opt_size;
-		remaining -= opt_size;
-		if (opts->drop_ts)
-			topts->options &= ~OPTION_TS;
+	opt_size = mptcp_established_options_add_addr(sk, skb, max_space, topts);
+	if (opt_size) {
+		/* Add addr clears all other MPTCP suboptions. */
+		total_size = opt_size;
+		remaining = max_space - opt_size;
 		ret = true;
 	} else if (mptcp_established_options_rm_addr(sk, &opt_size, remaining, opts)) {
 		total_size += opt_size;
