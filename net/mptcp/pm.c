@@ -966,15 +966,15 @@ out_unlock:
 static int mptcp_rm_addr_len(const struct mptcp_rm_list *rm_list)
 {
 	if (rm_list->nr == 0 || rm_list->nr > MPTCP_RM_IDS_MAX)
-		return -EINVAL;
+		return 0;
 
 	return TCPOLEN_MPTCP_RM_ADDR_BASE + roundup(rm_list->nr - 1, 4) + 1;
 }
 
-bool mptcp_pm_rm_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
-			     struct mptcp_rm_list *rm_list, int *size)
+int mptcp_pm_rm_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
+			    struct mptcp_rm_list *rm_list)
 {
-	int ret = false, len;
+	int len = 0;
 	u8 rm_addr;
 
 	spin_lock_bh(&msk->pm.lock);
@@ -985,21 +985,21 @@ bool mptcp_pm_rm_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
 
 	rm_addr = msk->pm.addr_signal & ~BIT(MPTCP_RM_ADDR_SIGNAL);
 	len = mptcp_rm_addr_len(&msk->pm.rm_list_tx);
-	if (len < 0) {
+	if (len == 0) {
 		WRITE_ONCE(msk->pm.addr_signal, rm_addr);
 		goto out_unlock;
 	}
-	if (remaining < len)
+	if (remaining < len) {
+		len = 0;
 		goto out_unlock;
+	}
 
-	*size = len;
 	*rm_list = msk->pm.rm_list_tx;
 	WRITE_ONCE(msk->pm.addr_signal, rm_addr);
-	ret = true;
 
 out_unlock:
 	spin_unlock_bh(&msk->pm.lock);
-	return ret;
+	return len;
 }
 
 int mptcp_pm_get_local_id(struct mptcp_sock *msk, struct sock_common *skc)

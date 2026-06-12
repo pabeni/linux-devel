@@ -1208,8 +1208,8 @@ static inline bool mptcp_pm_is_kernel(const struct mptcp_sock *msk)
 
 int mptcp_pm_add_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
 			     struct mptcp_addr_info *addr, bool *echo);
-bool mptcp_pm_rm_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
-			     struct mptcp_rm_list *rm_list, int *len);
+int mptcp_pm_rm_addr_signal(struct mptcp_sock *msk, unsigned int remaining,
+			    struct mptcp_rm_list *rm_list);
 int mptcp_pm_get_local_id(struct mptcp_sock *msk, struct sock_common *skc);
 bool mptcp_pm_is_backup(struct mptcp_sock *msk, struct sock_common *skc);
 int mptcp_pm_nl_dump_addr(struct sk_buff *msg,
