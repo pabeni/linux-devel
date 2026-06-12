@@ -52,6 +52,8 @@
 
 #include <trace/events/tcp.h>
 
+#include "tcp_out_options.h"
+
 void noinline tcp_mstamp_refresh(struct tcp_sock *tp)
 {
 	tcp_mstamp_refresh_inline(tp);
@@ -398,16 +400,6 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 	return tp->snd_una != tp->snd_up;
 }
 
-#define OPTION_SACK_ADVERTISE	BIT(0)
-#define OPTION_TS		BIT(1)
-#define OPTION_MD5		BIT(2)
-#define OPTION_WSCALE		BIT(3)
-#define OPTION_FAST_OPEN_COOKIE	BIT(8)
-#define OPTION_SMC		BIT(9)
-#define OPTION_MPTCP		BIT(10)
-#define OPTION_AO		BIT(11)
-#define OPTION_ACCECN		BIT(12)
-
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
 #if IS_ENABLED(CONFIG_SMC)
@@ -422,25 +414,6 @@ static void smc_options_write(__be32 *ptr, u16 *options)
 	}
 #endif
 }
-
-struct tcp_out_options {
-	/* Following group is cleared in __tcp_transmit_skb() */
-	struct_group(cleared,
-		u16 mss;		/* 0 to disable */
-		u8 bpf_opt_len;		/* length of BPF hdr option */
-		u8 num_sack_blocks;	/* number of SACK blocks to include */
-	);
-
-	/* Caution: following fields are not cleared in __tcp_transmit_skb() */
-	u16 options;		/* bit field of OPTION_* */
-	u8 ws;			/* window scale, 0 to disable */
-	u8 num_accecn_fields:7,	/* number of AccECN fields needed */
-	   use_synack_ecn_bytes:1; /* Use synack_ecn_bytes or not */
-	__u8 *hash_location;	/* temporary pointer, overloaded */
-	__u32 tsval, tsecr;	/* need to include OPTION_TS */
-	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
-	struct mptcp_out_options mptcp;
-};
 
 static void mptcp_options_write(struct tcphdr *th, __be32 *ptr,
 				struct tcp_sock *tp,
@@ -870,11 +843,10 @@ static void mptcp_set_option_cond(const struct request_sock *req,
 	if (rsk_is_mptcp(req)) {
 		unsigned int size;
 
-		if (mptcp_synack_options(req, &size, &opts->mptcp)) {
-			if (*remaining >= size) {
-				opts->options |= OPTION_MPTCP;
-				*remaining -= size;
-			}
+		size = mptcp_synack_options(req, *remaining, opts);
+		if (size >= 0) {
+			opts->options |= OPTION_MPTCP;
+			*remaining -= size;
 		}
 	}
 }
@@ -1029,11 +1001,10 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 	if (sk_is_mptcp(sk)) {
 		unsigned int size;
 
-		if (mptcp_syn_options(sk, skb, &size, &opts->mptcp)) {
-			if (remaining >= size) {
-				opts->options |= OPTION_MPTCP;
-				remaining -= size;
-			}
+		size = mptcp_syn_options(sk, skb, remaining, opts);
+		if (size >= 0) {
+			opts->options |= OPTION_MPTCP;
+			remaining -= size;
 		}
 	}
 
@@ -1184,19 +1155,12 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	 */
 	if (sk_is_mptcp(sk)) {
 		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
-		bool has_ts = opts->options & OPTION_TS;
 		int opt_size;
 
-		opts->mptcp.drop_ts = 0;
-
-		opt_size = mptcp_established_options(sk, skb, remaining, has_ts,
-						     &opts->mptcp);
+		opt_size = mptcp_established_options(sk, skb, remaining, opts);
 		if (opt_size >= 0) {
 			opts->options |= OPTION_MPTCP;
 			size += opt_size;
-
-			if (opts->mptcp.drop_ts)
-				opts->options &= ~OPTION_TS;
 		}
 	}
 #endif

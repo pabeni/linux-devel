@@ -12,6 +12,7 @@
 #include <net/mptcp.h>
 #include "protocol.h"
 #include "mib.h"
+#include "../ipv4/tcp_out_options.h"
 
 #include <trace/events/mptcp.h>
 
@@ -398,10 +399,12 @@ void mptcp_get_options(const struct sk_buff *skb,
 	}
 }
 
-bool mptcp_syn_options(struct sock *sk, const struct sk_buff *skb,
-		       unsigned int *size, struct mptcp_out_options *opts)
+int mptcp_syn_options(struct sock *sk, const struct sk_buff *skb,
+		      unsigned int remaining, struct tcp_out_options *topts)
 {
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
+	struct mptcp_out_options *opts = &topts->mptcp;
+	int ret;
 
 	/* we will use snd_isn to detect first pkt [re]transmission
 	 * in mptcp_established_options_mp()
@@ -415,14 +418,13 @@ bool mptcp_syn_options(struct sock *sk, const struct sk_buff *skb,
 			 * MPC handshake.
 			 */
 			subflow->request_mptcp = 0;
-			return false;
+			return -1;
 		}
 
 		opts->suboptions = OPTION_MPTCP_MPC_SYN;
 		opts->csum_reqd = mptcp_is_checksum_enabled(sock_net(sk));
 		opts->allow_join_id0 = mptcp_allow_join_id0(sock_net(sk));
-		*size = TCPOLEN_MPTCP_MPC_SYN;
-		return true;
+		ret = TCPOLEN_MPTCP_MPC_SYN;
 	} else if (subflow->request_join) {
 		pr_debug("remote_token=%u, nonce=%u\n", subflow->remote_token,
 			 subflow->local_nonce);
@@ -431,10 +433,12 @@ bool mptcp_syn_options(struct sock *sk, const struct sk_buff *skb,
 		opts->token = subflow->remote_token;
 		opts->nonce = subflow->local_nonce;
 		opts->backup = subflow->request_bkup;
-		*size = TCPOLEN_MPTCP_MPJ_SYN;
-		return true;
+		ret = TCPOLEN_MPTCP_MPJ_SYN;
+	} else {
+		return -1;
 	}
-	return false;
+
+	return ret <= remaining ? ret: -1;
 }
 
 static void clear_3rdack_retransmission(struct sock *sk)
@@ -808,11 +812,13 @@ static bool mptcp_established_options_mp_fail(struct sock *sk, int *size,
 }
 
 int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
-			      unsigned int remaining, bool has_ts,
-			      struct mptcp_out_options *opts)
+			      unsigned int remaining,
+			      struct tcp_out_options *topts)
 {
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
 	struct mptcp_sock *msk = mptcp_sk(subflow->conn);
+	struct mptcp_out_options *opts = &topts->mptcp;
+	bool has_ts = topts->options & OPTION_TS;
 	int total_size = 0;
 	bool snd_data_fin;
 	bool ret = false;
@@ -863,10 +869,13 @@ int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
 
 	total_size += opt_size;
 	remaining -= opt_size;
+	opts->drop_ts = 0;
 	if (mptcp_established_options_add_addr(sk, skb, &opt_size, remaining,
 					       has_ts, opts)) {
 		total_size += opt_size;
 		remaining -= opt_size;
+		if (opts->drop_ts)
+			topts->options &= ~OPTION_TS;
 		ret = true;
 	} else if (mptcp_established_options_rm_addr(sk, &opt_size, remaining, opts)) {
 		total_size += opt_size;
@@ -883,20 +892,21 @@ int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
 	return ret ? total_size : -1;
 }
 
-bool mptcp_synack_options(const struct request_sock *req, unsigned int *size,
-			  struct mptcp_out_options *opts)
+int mptcp_synack_options(const struct request_sock *req,
+			 unsigned int remaining, struct tcp_out_options *o)
 {
 	struct mptcp_subflow_request_sock *subflow_req = mptcp_subflow_rsk(req);
+	struct mptcp_out_options *opts = &o->mptcp;
+	int ret;
 
 	if (subflow_req->mp_capable) {
 		opts->suboptions = OPTION_MPTCP_MPC_SYNACK;
 		opts->sndr_key = subflow_req->local_key;
 		opts->csum_reqd = subflow_req->csum_reqd;
 		opts->allow_join_id0 = subflow_req->allow_join_id0;
-		*size = TCPOLEN_MPTCP_MPC_SYNACK;
 		pr_debug("subflow_req=%p, local_key=%llu\n",
 			 subflow_req, subflow_req->local_key);
-		return true;
+		ret = TCPOLEN_MPTCP_MPC_SYNACK;
 	} else if (subflow_req->mp_join) {
 		opts->suboptions = OPTION_MPTCP_MPJ_SYNACK;
 		opts->backup = subflow_req->request_bkup;
@@ -906,10 +916,12 @@ bool mptcp_synack_options(const struct request_sock *req, unsigned int *size,
 		pr_debug("req=%p, bkup=%u, id=%u, thmac=%llu, nonce=%u\n",
 			 subflow_req, opts->backup, opts->join_id,
 			 opts->thmac, opts->nonce);
-		*size = TCPOLEN_MPTCP_MPJ_SYNACK;
-		return true;
+		ret = TCPOLEN_MPTCP_MPJ_SYNACK;
+	} else {
+		return -1;
 	}
-	return false;
+
+	return ret < remaining ? ret : -1;
 }
 
 static bool check_fully_established(struct mptcp_sock *msk, struct sock *ssk,
